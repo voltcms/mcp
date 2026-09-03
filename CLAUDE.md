@@ -98,9 +98,15 @@ any of them away, and do not weaken their tests.**
    breaking changes in 0.6.0, six in 0.8.0 — so a break must land in one directory. Read its
    changelog before any bump.
 6. **No network in tests, ever.** The CIMD fetcher is injected and stubbed.
+7. **`FileDB`'s search never resolves an identifier.** `FileDB::read(null, [...])` matches with
+   `strcasecmp()` and treats `*` as a wildcard, so a lookup for the attacker-supplied
+   `client_id` of `claude*` matches a stored `claude-desktop`, and `CLAUDE-DESKTOP` matches it
+   too. `FileDbRepository::find()` scans and compares with `hash_equals()` instead. Every
+   lookup was already a scan (§4.5), so this costs nothing. (PLAN.md §4.8)
 
-Items 1 and 2 are *upgrade tripwires*: their tests must fail loudly if a dependency upgrade
-changes behaviour underneath us.
+Items 1, 2 and 7 are *upgrade tripwires*: their tests must fail loudly if a dependency upgrade
+changes behaviour underneath us. A failure there is a security regression to fix, never a test
+to relax.
 
 ## Coding standards
 

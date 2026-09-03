@@ -214,6 +214,30 @@ Verified working in the spike, and covered by tests here so an upgrade cannot re
 silently: PKCE required for public clients; authorization codes single-use (replay refused);
 refresh tokens rotated on use; `redirect_uri` matched exactly (a foreign URI is refused).
 
+### 4.8 FileDB's search must never resolve an identifier — a third tripwire
+
+Found in P2, not in the spikes, and it is the sharpest edge in the store.
+`FileDB::read(null, ['oauth_id' => …])` does not compare for equality. Its matcher is
+`strcasecmp()`, and it treats `*` as a wildcard. Measured on 2.0.2, against a stored
+`claude-desktop`:
+
+| lookup | result |
+|---|---|
+| `claude-desktop` | matches |
+| `claude*` | **matches** |
+| `*desktop` | **matches** |
+| `CLAUDE-DESKTOP` | **matches** |
+
+Client ids and token identifiers arrive straight out of an HTTP request, so delegating the
+comparison would hand an attacker prefix matching over the credential store — `client_id=a*`
+resolving whichever client happens to sort first — and would drop roughly a bit of entropy per
+alphabetic character of every token identifier it ever compared.
+
+`FileDbRepository::find()` therefore scans `readAll()` itself and compares with `hash_equals()`.
+That costs nothing extra: §4.5 already established every lookup is a scan. The tests in
+`FileDbRepositoryTest` and the `client_id=claude*` case in `AuthorizationFlowTest` are the
+tripwire — if they ever start failing, something has begun delegating to FileDB's search again.
+
 ---
 
 ## 5. Security posture, stated plainly
@@ -285,7 +309,7 @@ commit** — this is credential issuance.
 |---|---|---|
 | **P0 — spikes** | ✅ Done — decisions 0001 and 0002. | — |
 | **P1 — scaffolding** | ✅ Done. Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
-| **P2 — OAuth repositories** | The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
+| **P2 — OAuth repositories** | ✅ Done. The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
 | **P3 — the tightenings** | `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
 | **P4 — metadata & keys** | RFC 8414 document, `KeyManager`, JWKS endpoint. **First usable release.** | 1 day |
 | **P5 — identity & bridge** | `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |

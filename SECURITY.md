@@ -39,6 +39,10 @@ Each of these is backed by a test that fails if the guarantee breaks.
   account or a removed role invalidates a live token *now*, not at expiry.
 - **A token can never carry a scope its granting user's roles do not support.**
 - **A missing store record reads as revoked**, never as valid.
+- **Identifiers are matched exactly.** Client ids and token identifiers are compared with
+  `hash_equals()` against the stored value, never through the flat-file store's own search,
+  which matches case-insensitively and treats `*` as a wildcard. A `client_id` of `claude*`
+  resolves no client.
 - **Throttling** on authorize, token and register, keyed by identifier + IP.
 - **Every issuance, refresh and revocation is written to the audit log.**
 - **Client ID Metadata Document fetches are guarded**: HTTPS only, no cross-host redirects, no
