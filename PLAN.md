@@ -266,16 +266,16 @@ commit** — this is credential issuance.
 
 ## 7. Repository scaffolding
 
-- [ ] `composer.json` — MIT, `php: ^8.2`, the four requires of §2, `suggest: nyholm/psr7`
-- [ ] `phpunit.xml`; `.github/workflows/test.yml` on 8.2/8.3/8.4; `.editorconfig`
-- [ ] `README.md` — the pitch, install, a worked example, the `.well-known` snippets for
+- [x] `composer.json` — MIT, `php: ^8.2`, the four requires of §2, `suggest: nyholm/psr7`
+- [x] `phpunit.xml`; `.github/workflows/test.yml` on 8.2/8.3/8.4; `.editorconfig`
+- [x] `README.md` — the pitch, install, a worked example, the `.well-known` snippets for
       Apache and nginx, and an honest "when to use an external IdP instead"
-- [ ] `SECURITY.md` — §5 as guarantees, the JWT revocation caveat in plain words, disclosure
+- [x] `SECURITY.md` — §5 as guarantees, the JWT revocation caveat in plain words, disclosure
       address
-- [ ] `CHANGELOG.md`, `LICENSE`, `CLAUDE.md` (§9)
-- [ ] `docs/decisions/0001-build-vs-adopt.md`, `0002-wrap-or-write.md` — copied in
+- [x] `CHANGELOG.md`, `LICENSE`, `CLAUDE.md` (§9)
+- [x] `docs/decisions/0001-build-vs-adopt.md`, `0002-wrap-or-write.md` — copied in
 - [ ] `examples/blog/` — the full flow: tools, consent page, `.well-known`, end to end
-- [ ] `.gitignore` — `/vendor/`, `.phpunit.result.cache`, and **the key directory**
+- [x] `.gitignore` — `/vendor/`, `.phpunit.result.cache`, and **the key directory**
 
 ---
 
@@ -284,7 +284,7 @@ commit** — this is credential issuance.
 | Phase | Content | Rough size |
 |---|---|---|
 | **P0 — spikes** | ✅ Done — decisions 0001 and 0002. | — |
-| **P1 — scaffolding** | Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
+| **P1 — scaffolding** | ✅ Done. Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
 | **P2 — OAuth repositories** | The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
 | **P3 — the tightenings** | `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
 | **P4 — metadata & keys** | RFC 8414 document, `KeyManager`, JWKS endpoint. **First usable release.** | 1 day |
