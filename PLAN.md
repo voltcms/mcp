@@ -311,7 +311,7 @@ commit** — this is credential issuance.
 | **P1 — scaffolding** | ✅ Done. Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
 | **P2 — OAuth repositories** | ✅ Done. The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
 | **P3 — the tightenings** | ✅ Done. `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
-| **P4 — metadata & keys** | RFC 8414 document, `KeyManager`, JWKS endpoint. **First usable release.** | 1 day |
+| **P4 — metadata & keys** | ✅ Done. RFC 8414 document, `KeyManager`, JWKS endpoint, and the `OAuthServer` façade that assembles them. **First usable release.** | 1 day |
 | **P5 — identity & bridge** | `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
 | **P6 — clients & polish** | CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example, an end-to-end pass with MCP Inspector and Claude Code, tag `0.1.0`. | 1–1.5 days |
 
@@ -345,7 +345,10 @@ commit** — this is credential issuance.
 
 ## 10. Open questions
 
-1. **Key rotation policy** — key lifetime, overlapping keys in JWKS, manual or age-triggered.
+1. ~~**Key rotation policy** — key lifetime, overlapping keys in JWKS, manual or age-triggered.~~
+   **Answered in P4:** manual rotation, RFC 7638 thumbprint as `kid`, and the retired public key
+   published until the last token it signed has expired. See
+   `docs/decisions/0004-key-rotation.md`.
 2. **FileDB's O(n) lookup** (§4.5) — accept with a documented ceiling, or a purpose-built
    token store from the start? Leaning: accept, measure, revisit.
 3. **Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.

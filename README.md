@@ -81,6 +81,30 @@ $config = new Configuration(
 );
 ```
 
+The authorization server assembles itself from that configuration and the two seams below. Route
+to it and emit what it returns:
+
+```php
+use VoltCMS\MCP\Http\Request;
+use VoltCMS\MCP\OAuth\Endpoints\MetadataEndpoint;
+use VoltCMS\MCP\OAuthServer;
+
+$oauth   = new OAuthServer($config, $identity, $scopePolicy, $consentView, $loginRedirector);
+$request = Request::fromGlobals();
+
+$response = match ($path) {
+    '/oauth/authorize'                => $oauth->authorize($request),
+    '/oauth/token'                    => $oauth->token($request),
+    '/oauth/revoke'                   => $oauth->revoke($request),
+    '/oauth/jwks'                     => $oauth->jwks($request),
+    MetadataEndpoint::WELL_KNOWN_PATH => $oauth->metadata($request),
+};
+```
+
+The signing keypair is generated on first construction — 2048-bit RSA, private key `0600`, both
+files under `privateKeyPath`'s directory with a deny-all `.htaccess` beside them. There is no
+install step.
+
 Your application supplies its tools, its consent markup and its content directories. Nothing
 else:
 
@@ -145,6 +169,27 @@ location = /.well-known/oauth-protected-resource   { rewrite ^ /mcp.php?doc=pr l
 Some hosts ship a literal `.well-known/` directory that shadows these rules — check that the
 document is actually served by PHP before debugging anything else.
 
+## Housekeeping
+
+Two things want running occasionally, and neither can run itself: there is no daemon, which is
+most of the point of the package.
+
+```php
+// bin/mcp-maintenance.php
+$oauth->purgeExpired();      // expired codes, tokens and retired signing keys
+```
+
+```bash
+# Sweep nightly; rotate the signing key quarterly.
+17 3 * * *   php /path/to/bin/mcp-maintenance.php
+0  4 1 */3 * php -r 'require "bootstrap.php"; $oauth->keys()->rotate();'
+```
+
+Rotation does not disconnect anyone. The retired public key stays in the JWKS until the last
+token it signed has expired, so live clients keep working and pick up the new key on their next
+fetch — see [`docs/decisions/0004-key-rotation.md`](docs/decisions/0004-key-rotation.md). Left
+unswept, the token collections grow without bound and every lookup slows with them.
+
 ## When to use an external IdP instead
 
 Honestly: often.
@@ -170,6 +215,10 @@ hosting, where standing up an identity provider costs more than the feature is w
   adopt `mcp/sdk` rather than write a protocol layer
 - [`docs/decisions/0002-wrap-or-write.md`](docs/decisions/0002-wrap-or-write.md) — why we wrap
   `league/oauth2-server` rather than write a token issuer
+- [`docs/decisions/0003-consent-seam.md`](docs/decisions/0003-consent-seam.md) — how a consent
+  approval is bound to the request it was shown for, without a session
+- [`docs/decisions/0004-key-rotation.md`](docs/decisions/0004-key-rotation.md) — key lifetime,
+  overlapping keys in JWKS, and who triggers a rotation
 - [`SECURITY.md`](SECURITY.md) — what this package guarantees, and what it does not
 - [`CLAUDE.md`](CLAUDE.md) — coding standards and the invariants that must not be simplified away
 

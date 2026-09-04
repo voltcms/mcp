@@ -59,6 +59,19 @@ changes are permitted in `0.x` and are recorded here.
   so revoking either end of a grant revokes both.
 - `lcobucci/jwt`, `php-http/discovery`, `psr/http-factory` and `psr/http-message` are now direct
   requirements. They were already installed transitively; this package calls them itself.
+- `OAuthServer`: the façade. Five endpoints, six repositories, both league grants and a keypair,
+  assembled from a `Configuration` and the two seams a consuming application fills.
+- `OAuth\Keys\KeyManager`: RS256 generation on first use, a `0600` private key behind a deny-all
+  `.htaccess`, RFC 7638 thumbprints as `kid`, rotation that keeps publishing the retired public key
+  until the last token it signed has expired, and `purgeRetiredKeys()`. See
+  `docs/decisions/0004-key-rotation.md`.
+- `OAuth\Keys\JwksEndpoint`: the RFC 7517 key set `mcp/sdk`'s `JwksProvider` consumes.
+- `OAuth\Endpoints\MetadataEndpoint`: the RFC 8414 authorization server metadata document league
+  ships none of. `document()` returns it as an array for consumers rendering their own route.
+- Every issued access token now carries the signing key's `kid` in its header, so a consumer can
+  pick the right key out of a JWKS that is publishing more than one.
+- `OAuthServer::purgeExpired()` sweeps codes, tokens and retired keys in one call, for the cron
+  entry a flat-file deployment has to supply itself.
 
 ### Security
 
