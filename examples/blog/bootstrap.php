@@ -35,11 +35,25 @@ spl_autoload_register(static function (string $class): void {
  * subdirectory of it — the deny-all files this package writes are defence in depth, not a
  * substitute (see SECURITY.md).
  */
-$private = dirname(__DIR__, 3) . '/private/example-blog';
+$private = getenv('MCP_STORAGE') ?: dirname(__DIR__, 3) . '/private/example-blog';
+
+/**
+ * From the environment, with a documented default — the same place the encryption key comes from.
+ *
+ * Reading these from the environment is not a softening of "the issuer is configuration, never a
+ * header". The environment is configuration: it is set by whoever deploys the site, once, and an
+ * incoming request cannot influence it. What must never happen is deriving either from
+ * `$_SERVER['HTTP_HOST']`, and nothing here does.
+ *
+ * They have to be the PUBLIC URLs. Behind a tunnel that means the tunnel's hostname, not
+ * `localhost` — a client discovers this server through these values and will go wherever they say.
+ */
+$issuer   = getenv('MCP_ISSUER') ?: 'https://example.com';
+$resource = getenv('MCP_RESOURCE') ?: $issuer . '/mcp';
 
 $configuration = new Configuration(
-    issuer:           'https://example.com',
-    resource:         'https://example.com/mcp',
+    issuer:           $issuer,
+    resource:         $resource,
     storageDirectory: $private . '/oauth',
     privateKeyPath:   $private . '/keys/private.key',
     publicKeyPath:    $private . '/keys/public.key',

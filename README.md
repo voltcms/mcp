@@ -15,9 +15,10 @@ but files on disk.
 > registration endpoints, signing-key management and rotation, identity and scope policy, the bridge
 > into `mcp/sdk`, and Client ID Metadata Documents. 435 tests run on PHP 8.2, 8.3 and 8.4.
 >
-> **No version is tagged yet.** What is left before `0.1.0` is a live pass — MCP Inspector and a
-> real Claude client against a deployed host — not more code. Until then, treat this as unreviewed
-> and do not point it at production credentials.
+> **No version is tagged yet.** What is left before `0.1.0` is mostly a live pass — MCP Inspector
+> and a real Claude client against a deployed host — plus one known spec gap found while writing it
+> up. Both are in [`docs/release-checklist.md`](docs/release-checklist.md). Until then, treat this as
+> unreviewed and do not point it at production credentials.
 
 ---
 
@@ -268,6 +269,8 @@ hosting, where standing up an identity provider costs more than the feature is w
   — what the flat-file lookup costs, measured, and why revocation is immediate
 - [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md)
   — Client ID Metadata Documents, why dynamic registration is opt-in, and which package answers
+- [`docs/release-checklist.md`](docs/release-checklist.md) — the runbook for the live pass before
+  `0.1.0`: what to deploy, what to `curl`, what each failure means
 - [`examples/blog/`](examples/blog/) — the whole flow, runnable
 - [`SECURITY.md`](SECURITY.md) — what this package guarantees, and what it does not
 - [`CLAUDE.md`](CLAUDE.md) — coding standards and the invariants that must not be simplified away

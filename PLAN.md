@@ -318,8 +318,10 @@ commit** — this is credential issuance.
 
 **≈ 4–7 focused days.** The consuming application works against a `path` repository from P4.
 
-**All six phases are implemented.** What remains before `0.1.0` is a live pass — MCP Inspector and
-a real Claude client against a deployed host — which needs a deployment rather than more code.
+**All six phases are implemented.** What remains before `0.1.0` is written out step by step in
+`docs/release-checklist.md`: a live pass against MCP Inspector and a real Claude client, plus one
+code change that writing the runbook turned up — the RFC 9728 path-inserted metadata URL, which we
+do not currently serve.
 
 ---
 

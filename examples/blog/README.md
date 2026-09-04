@@ -17,28 +17,43 @@ its consent markup and its content directories, and nothing else.*
 | `src/Posts.php` | **Yours.** The tools. Plain methods with real type declarations. |
 | `bin/maintenance.php` | The cron entry. There is no daemon; sweeping is yours to schedule. |
 | `bin/register-client.php` | Registering a client by hand. |
+| `bin/create-user.php` | Creating an account, because `voltcms/useraccess` ships no CLI. |
+| `dev-router.php` | Rewrite rules for PHP's built-in server. Local development only. |
 
 Identity is not on that list, and that is deliberate: `UserAccessIdentityProvider` is concrete.
 
 ## Running it
 
+Four environment variables, and a router. Plain HTTP is accepted for loopback and nowhere else.
+
 ```bash
+export MCP_STORAGE=/tmp/mcp-live
+export MCP_ISSUER=http://localhost:8080
+export MCP_RESOURCE=http://localhost:8080/mcp
 export MCP_ENCRYPTION_KEY="$(php -r 'echo base64_encode(random_bytes(32));')"
-php -S localhost:8080 -t examples/blog/public
+
+php -S localhost:8080 -t examples/blog/public examples/blog/dev-router.php
 ```
 
-Then point `issuer` and `resource` in `bootstrap.php` at `http://localhost:8080` and
-`http://localhost:8080/mcp` — plain HTTP is accepted for loopback and nowhere else.
+`dev-router.php` is not decoration. The built-in server has no rewrite rules, and the two obvious
+things to try both fail: `-t public` alone never routes `/.well-known/…` or `/oauth/…` to PHP at
+all, and passing `public/mcp.php` as the router sends *everything* through the front controller, so
+`/login.php` 404s and the consent screen loads unstyled. The router serves real files as files and
+everything else to the front controller — which is exactly what the Apache and nginx rules in the
+root README express.
 
-The built-in server has no rewrite rules, so `/.well-known/...` will 404. In front of Apache or
-nginx, use the snippets in the root README.
-
-Create a user and put them in the `editors` group with `voltcms/useraccess`'s own tooling, register
-a client, and connect:
+Then, in a second shell, create a user and a client:
 
 ```bash
-php examples/blog/bin/register-client.php "MCP Inspector" http://localhost:6274/oauth/callback
+php examples/blog/bin/create-user.php jannis 'correct-horse-battery' editors
+php examples/blog/bin/register-client.php "MCP Inspector" 'http://localhost:6274/oauth/callback'
 ```
+
+The group name matters: `bootstrap.php` maps `editors` to `mcp:read mcp:write` and gives every other
+account `mcp:read` alone, so it is what makes `write_post` work.
+
+Connect MCP Inspector to `http://localhost:8080/mcp`, or walk the discovery chain by hand — both are
+written out step by step in [`docs/release-checklist.md`](../../docs/release-checklist.md).
 
 ## What to look at
 
