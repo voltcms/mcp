@@ -22,9 +22,10 @@ fixes are prioritised by exploitability, and a fix ships as a patch release with
 
 Each of these is backed by a test that fails if the guarantee breaks.
 
-- **PKCE with `S256`, and nothing else.** A `code_challenge_method` of `plain` is refused
-  before the request reaches `league/oauth2-server`, which would otherwise accept it. PKCE is
-  required for public clients.
+- **PKCE with `S256`, and nothing else.** A `code_challenge_method` of `plain` — or an absent
+  one, which RFC 7636 defaults to `plain` — is refused before the request reaches
+  `league/oauth2-server`, which would otherwise accept both. PKCE is required of every client,
+  confidential ones included.
 - **Audience binding (RFC 8707).** An issued access token's `aud` is the *resource* — the
   canonical MCP endpoint URL — not the client id, so a token minted for one server cannot be
   replayed at another.
@@ -37,13 +38,24 @@ Each of these is backed by a test that fails if the guarantee breaks.
   changed case is a different URI.
 - **Scopes are re-checked against the live user record on every validation.** A deactivated
   account or a removed role invalidates a live token *now*, not at expiry.
+- **Revocation takes effect immediately.** Validation reads the token store on every request, so
+  a revoked access token stops working at once rather than running out its hour. Revoking either
+  end of a grant revokes both — the access token and the refresh token issued with it. The cost
+  of that lookup was measured before it was accepted; see
+  [`docs/decisions/0005-validation-reads-the-store.md`](docs/decisions/0005-validation-reads-the-store.md).
 - **A token can never carry a scope its granting user's roles do not support.**
 - **A missing store record reads as revoked**, never as valid.
 - **Identifiers are matched exactly.** Client ids and token identifiers are compared with
   `hash_equals()` against the stored value, never through the flat-file store's own search,
   which matches case-insensitively and treats `*` as a wildcard. A `client_id` of `claude*`
   resolves no client.
-- **Throttling** on authorize, token and register, keyed by identifier + IP.
+- **Throttling** on authorize, token and revoke, keyed by identifier + IP, in a separate bucket
+  per endpoint so probing one cannot lock a user out of another.
+- **A `resource` parameter naming another server is refused** with `invalid_target`, rather than
+  answered with a token for this one (RFC 8707).
+- **A consent approval is bound to the request it was shown for** — the user, the client, the
+  redirect URI, the granted scopes, the code challenge and the state — so a cross-site POST
+  cannot approve an authorization request.
 - **Every issuance, refresh and revocation is written to the audit log.**
 - **Client ID Metadata Document fetches are guarded**: HTTPS only, no cross-host redirects, no
   private or link-local addresses, a size cap, a cached TTL, and a timeout short enough for
@@ -51,23 +63,21 @@ Each of these is backed by a test that fails if the guarantee breaks.
 
 ## What this package does not guarantee
 
-**Access-token revocation is not instant.** Access tokens are JWTs with a **one-hour TTL**.
-They are self-contained and readable by anyone holding one, and validating them does not hit
-the store on every request — so an access token revoked at minute five may keep working until
-minute sixty.
+**A token already in flight is not recalled.** Revocation stops the *next* request; a request
+already being served with a token revoked a moment ago finishes. Access tokens are JWTs with a
+**one-hour TTL**, and the TTL is what bounds a token that is never revoked at all.
 
-What *is* immediate is revoking the **grant**: the refresh path dies at once, so the client
-cannot obtain another token. That is the control that matters, and it is the trade the JWT
-design makes deliberately. If you need instant access-token revocation, use an external
-identity provider instead (see the README's "When to use an external IdP instead").
+**Anyone holding an access token can read its claims.** They are signed, not encrypted. Do not
+put anything secret in a scope name, a client id or a subject identifier.
 
-Two further limits, stated plainly:
+**A stolen token still works until it is revoked.** Re-checking scopes against the live account
+catches deactivation and role removal; it does not catch a token lifted from a client that is
+otherwise in good standing. Short TTLs and revoking the grant are the answer there.
 
-- Anyone holding an access token can read its claims. Do not put anything secret in a scope
-  name or a subject identifier.
-- Scope re-checking on validation catches deactivation and role removal. It does not catch a
-  token stolen from a client that is still perfectly valid — short TTLs and revoking the grant
-  are the answer there.
+**Validation fails closed, which means an unreadable store refuses everything.** A missing record
+reads as revoked, so a token store that has been emptied, moved or made unwritable rejects every
+token rather than accepting every token. That is the right direction, and it is an outage — back
+the store up (see below).
 
 ## Deployment requirements
 

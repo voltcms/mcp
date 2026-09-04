@@ -53,16 +53,29 @@ final class PsrAdapter
      * league reads four things from a server request: the query parameters, the parsed body, the
      * `Authorization` header and the server parameters. All four are carried across; the request
      * target is not a URL, for the reason Request's docblock gives.
+     *
+     * `$absoluteUri` exists for one caller. `mcp/sdk`'s transport builds its `WWW-Authenticate`
+     * challenge from the request's scheme and authority and throws without them, so the MCP
+     * endpoint has to hand over an absolute URL. It must be the CONFIGURED resource URL and never
+     * one assembled from a request header — that is the whole of PLAN.md §4.3 — which is why this
+     * is a parameter the caller supplies rather than something this method could work out.
      */
-    public function toServerRequest(Request $request): ServerRequestInterface
+    public function toServerRequest(Request $request, ?string $absoluteUri = null): ServerRequestInterface
     {
         $psrRequest = $this->serverRequests
-            ->createServerRequest($request->method, $request->uri, ['REMOTE_ADDR' => $request->clientIp])
+            ->createServerRequest($request->method, $absoluteUri ?? $request->uri, ['REMOTE_ADDR' => $request->clientIp])
             ->withQueryParams($request->queryParams)
             ->withParsedBody($request->parsedBody);
 
         foreach ($request->headers as $name => $value) {
             $psrRequest = $psrRequest->withHeader($name, $value);
+        }
+
+        // mcp/sdk reads the JSON-RPC envelope off the body stream, not out of the parsed body, so
+        // a request that carried only the parsed form would reach it as a parse error.
+        if ($request->rawBody !== '') {
+            $psrRequest->getBody()->write($request->rawBody);
+            $psrRequest->getBody()->rewind();
         }
 
         return $psrRequest;

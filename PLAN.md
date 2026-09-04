@@ -243,10 +243,11 @@ tripwire — if they ever start failing, something has begun delegating to FileD
 ## 5. Security posture, stated plainly
 
 - **Access tokens are JWTs with a one-hour TTL.** They are self-contained and readable by
-  anyone holding one, and revoking an access token before it expires is not instant unless a
-  store lookup runs on every request. Revoking the **grant** kills the refresh path
-  immediately, which is the control that matters. `SECURITY.md` says this in these words
-  rather than implying instant revocation.
+  anyone holding one. Revocation *is* immediate: P5 measured the store lookup and put it on the
+  validation path, so a revoked access token stops working at once rather than running out its
+  hour — see `docs/decisions/0005-validation-reads-the-store.md`. Revoking either end of a grant
+  revokes both. What `SECURITY.md` still says plainly is what remains true: a request already in
+  flight finishes, and a token's claims are readable by anyone holding it.
 - **Scopes are re-checked against the live user record on every validation.** A deactivated
   account or a removed role invalidates a live token now, not at expiry. This is
   `UserAccessIdentityProvider`'s job and it is the reason `findUser()` exists separately from
@@ -312,7 +313,7 @@ commit** — this is credential issuance.
 | **P2 — OAuth repositories** | ✅ Done. The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
 | **P3 — the tightenings** | ✅ Done. `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
 | **P4 — metadata & keys** | ✅ Done. RFC 8414 document, `KeyManager`, JWKS endpoint, and the `OAuthServer` façade that assembles them. **First usable release.** | 1 day |
-| **P5 — identity & bridge** | `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
+| **P5 — identity & bridge** | ✅ Done. `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
 | **P6 — clients & polish** | CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example, an end-to-end pass with MCP Inspector and Claude Code, tag `0.1.0`. | 1–1.5 days |
 
 **≈ 4–7 focused days.** The consuming application works against a `path` repository from P4.
@@ -349,8 +350,11 @@ commit** — this is credential issuance.
    **Answered in P4:** manual rotation, RFC 7638 thumbprint as `kid`, and the retired public key
    published until the last token it signed has expired. See
    `docs/decisions/0004-key-rotation.md`.
-2. **FileDB's O(n) lookup** (§4.5) — accept with a documented ceiling, or a purpose-built
-   token store from the start? Leaning: accept, measure, revisit.
+2. ~~**FileDB's O(n) lookup** (§4.5) — accept with a documented ceiling, or a purpose-built
+   token store from the start? Leaning: accept, measure, revisit.~~
+   **Answered in P5: accept.** Measured at 0.45 ms per 100 records and 5.24 ms per 1 000; a swept
+   deployment holds about 24 records per active client. See
+   `docs/decisions/0005-validation-reads-the-store.md`.
 3. **Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.
 4. **`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
    the consumer's `2.0.2` pin.

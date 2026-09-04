@@ -199,9 +199,9 @@ package — if **any** of these are true:
 
 - You have more than a handful of users, or users who are not you.
 - You need SSO, MFA, or an account lifecycle someone else administers.
-- You need instant revocation of an access token. Ours are JWTs with a one-hour TTL;
-  revoking the *grant* is immediate, revoking an already-issued access token is not
-  (see [`SECURITY.md`](SECURITY.md)).
+- You need federation, or tokens other services validate on their own. Ours are validated in
+  this process, against this store — which is what makes revocation immediate, and also what
+  makes them useless to a second service.
 - You have a database and an operations story, so "no daemon" buys you nothing.
 - Your compliance regime expects an audited identity product.
 
@@ -219,6 +219,8 @@ hosting, where standing up an identity provider costs more than the feature is w
   approval is bound to the request it was shown for, without a session
 - [`docs/decisions/0004-key-rotation.md`](docs/decisions/0004-key-rotation.md) — key lifetime,
   overlapping keys in JWKS, and who triggers a rotation
+- [`docs/decisions/0005-validation-reads-the-store.md`](docs/decisions/0005-validation-reads-the-store.md)
+  — what the flat-file lookup costs, measured, and why revocation is immediate
 - [`SECURITY.md`](SECURITY.md) — what this package guarantees, and what it does not
 - [`CLAUDE.md`](CLAUDE.md) — coding standards and the invariants that must not be simplified away
 

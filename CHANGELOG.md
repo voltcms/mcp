@@ -72,6 +72,26 @@ changes are permitted in `0.x` and are recorded here.
   pick the right key out of a JWKS that is publishing more than one.
 - `OAuthServer::purgeExpired()` sweeps codes, tokens and retired keys in one call, for the cron
   entry a flat-file deployment has to supply itself.
+- `Identity\UserAccessIdentityProvider`: identity over `voltcms/useraccess`, concrete, so a
+  consumer using it implements no identity code at all. Group membership is computed against the
+  injected group provider rather than through `User::isMemberOf()`, which reaches for a singleton.
+- `Identity\ScopePolicy`: the role-to-scope table, with `everyoneMay()` for the single-account
+  case.
+- `Identity\UserAccessSession` and `Contracts\SessionInterface`: "who is logged in", isolated so
+  that starting a PHP session — the one thing in this package that writes a header — happens in
+  one place and lazily.
+- `Bridge\McpTokenValidator`: `mcp/sdk`'s bearer-token seam answered with the tokens league
+  minted. No network, no `firebase/php-jwt`, and the account and its scopes re-read on every
+  request.
+- `Bridge\ProtectedResourceMetadata` and `Bridge\SessionStoreFactory`: the RFC 9728 document,
+  and the handshake-era session store kept under the configured storage directory with a `purge()`
+  for the same cron entry.
+- `McpServer`: the MCP endpoint. Registers tools, serves both protocol eras through
+  `mcp/sdk`'s transport, and refuses anything without a valid token before a JSON-RPC envelope is
+  parsed. `DnsRebindingProtectionMiddleware` is rebuilt around the configured resource host, whose
+  localhost-only default would otherwise 403 every request to a deployed server.
+- `Http\Request::$rawBody`: the body as it arrived. MCP posts `application/json`, which PHP never
+  puts in `$_POST`, so a request object carrying only the parsed form could not reach the SDK.
 
 ### Security
 
@@ -90,5 +110,15 @@ changes are permitted in `0.x` and are recorded here.
   endpoint cannot be used to ask whether a token exists.
 - No endpoint lets an internal exception message reach a client: anything that is not an
   `OAuthServerException` becomes a fixed `server_error`.
+- **Access-token revocation is now immediate.** Validation reads the token store on every request;
+  the cost was measured before it was accepted. `SECURITY.md`'s "not instant" caveat is replaced by
+  a narrower one. See `docs/decisions/0005-validation-reads-the-store.md`.
+- A token's scopes are narrowed on every validation to what the account's roles currently grant, so
+  a demotion takes effect before the token expires.
+- `UserAccessIdentityProvider` validates an identifier's shape before it reaches the store — which
+  builds a filesystem path out of it — and re-checks it with `hash_equals()` afterwards, because
+  the store lowercases before looking up.
+- Every refusal from `McpTokenValidator` returns the same description, so a caller cannot tell
+  "expired" from "revoked" from "no such account".
 
 [Unreleased]: https://github.com/voltcms/mcp/commits/main

@@ -40,6 +40,16 @@ final class Request
     /** @var array<string, mixed> Decoded form body, empty for requests that have none. */
     public readonly array $parsedBody;
 
+    /**
+     * The body exactly as it arrived.
+     *
+     * Both are here because both are needed and neither can be derived from the other. The OAuth
+     * endpoints read `parsedBody`, because a token request is a form post; MCP reads this, because
+     * a JSON-RPC envelope is `application/json` and PHP never puts one in `$_POST`. A request
+     * object that carried only the parsed form would make the MCP endpoint impossible to build on.
+     */
+    public readonly string $rawBody;
+
     /** @var array<string, string> Header names as given; look up through `header()`, not directly. */
     public readonly array $headers;
 
@@ -63,6 +73,7 @@ final class Request
         array $parsedBody = [],
         array $headers = [],
         string $clientIp = '',
+        string $rawBody = '',
     ) {
         $method = strtoupper(trim($method));
 
@@ -76,6 +87,7 @@ final class Request
         $this->parsedBody  = $parsedBody;
         $this->headers     = $headers;
         $this->clientIp    = $clientIp;
+        $this->rawBody     = $rawBody;
     }
 
     // --- Construction ---
@@ -86,6 +98,10 @@ final class Request
      * The query string is re-parsed from `REQUEST_URI` rather than read from `$_GET`, because a
      * host that runs with `register_globals`-era `variables_order` or an `.htaccess` rewrite can
      * leave `$_GET` holding something other than what the client actually sent.
+     *
+     * The raw body is read from `php://input`, which is where a JSON-RPC envelope lives — PHP fills
+     * `$_POST` only for form encodings. It reads empty for a form post on most SAPIs, which is
+     * exactly right: `$_POST` already has that.
      */
     public static function fromGlobals(): self
     {
@@ -107,6 +123,7 @@ final class Request
             $body,
             self::headersFromServer($server),
             is_string($server['REMOTE_ADDR'] ?? null) ? $server['REMOTE_ADDR'] : '',
+            (string) @file_get_contents('php://input'),
         );
     }
 
@@ -118,9 +135,14 @@ final class Request
             $headers[(string) $name] = implode(', ', $values);
         }
 
-        $body = $request->getParsedBody();
-        $uri  = $request->getUri()->getPath();
+        $body  = $request->getParsedBody();
+        $uri   = $request->getUri()->getPath();
         $query = $request->getUri()->getQuery();
+        $raw   = $request->getBody();
+
+        if ($raw->isSeekable()) {
+            $raw->rewind();
+        }
 
         /** @var array<string, mixed> $serverParams */
         $serverParams = $request->getServerParams();
@@ -132,6 +154,7 @@ final class Request
             is_array($body) ? $body : [],
             $headers,
             is_string($serverParams['REMOTE_ADDR'] ?? null) ? $serverParams['REMOTE_ADDR'] : '',
+            $raw->getContents(),
         );
     }
 

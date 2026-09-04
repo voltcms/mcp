@@ -101,6 +101,18 @@ final class RequestTest extends TestCase
         $this->assertNull($request->basicAuthCredentials());
     }
 
+    public function testCarriesARawJsonBodyThatIsNotAFormPost(): void
+    {
+        $request = new Request('POST', '/mcp', [], [], [], '', '{"jsonrpc":"2.0"}');
+
+        $this->assertSame('{"jsonrpc":"2.0"}', $request->rawBody);
+    }
+
+    public function testTheRawBodyIsEmptyWhenThereWasNone(): void
+    {
+        $this->assertSame('', (new Request('GET', '/oauth/authorize'))->rawBody);
+    }
+
     // --- PSR-7 ---
 
     public function testCarriesTheQueryStringAcrossFromPsr7(): void
@@ -134,5 +146,12 @@ final class RequestTest extends TestCase
         $psr = (new ServerRequest('GET', 'https://example.com/mcp'))->withHeader('Authorization', 'Bearer xyz');
 
         $this->assertSame('xyz', Request::fromPsr7($psr)->bearerToken());
+    }
+
+    public function testCarriesTheRawBodyAcrossFromPsr7(): void
+    {
+        $psr = new ServerRequest('POST', 'https://example.com/mcp', [], '{"jsonrpc":"2.0"}');
+
+        $this->assertSame('{"jsonrpc":"2.0"}', Request::fromPsr7($psr)->rawBody);
     }
 }
