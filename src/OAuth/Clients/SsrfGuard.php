@@ -37,7 +37,10 @@ final class SsrfGuard
     public const EXCEPTION_HOST_UNRESOLVED = 10004;
     public const EXCEPTION_ADDRESS_PRIVATE = 10005;
 
-    /** Only the default HTTPS port. A metadata document on :8443 is a metadata document on a host we cannot reason about. */
+    /**
+     * Only the default HTTPS port. A metadata document on `:8443` is a document on a service this
+     * server has no way to reason about, and the ports worth reaching internally are all unusual.
+     */
     public const ALLOWED_PORTS = [443];
 
     /** @var \Closure(string): list<string> */

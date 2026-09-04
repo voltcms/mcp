@@ -13,6 +13,7 @@ use VoltCMS\MCP\OAuth\Entities\Client;
 use VoltCMS\MCP\OAuthServer;
 use VoltCMS\MCP\Tests\Support\RecordingConsentView;
 use VoltCMS\MCP\Tests\Support\RecordingLoginRedirector;
+use VoltCMS\MCP\Tests\Support\Pkce;
 use VoltCMS\MCP\Tests\Support\RepositoryTestCase;
 use VoltCMS\MCP\Tests\Support\MutableScopePolicy;
 use VoltCMS\MCP\Tests\Support\StubIdentityProvider;
@@ -41,7 +42,7 @@ final class OAuthServerScopeNarrowingTest extends RepositoryTestCase
         parent::setUp();
 
         $this->consentView  = new RecordingConsentView();
-        $this->codeVerifier = bin2hex(random_bytes(32));
+        $this->codeVerifier = Pkce::verifier();
     }
 
     public function testARefreshAfterADemotionCarriesOnlyTheScopesTheAccountStillGrants(): void
@@ -54,7 +55,9 @@ final class OAuthServerScopeNarrowingTest extends RepositoryTestCase
 
         $refreshed = $this->refresh($oauth, (string) $issued['refresh_token']);
 
-        $this->assertSame(['mcp:read'], $oauth->accessTokenVerifier()->verify((string) $refreshed['access_token'])?->scopes);
+        $claims = $oauth->accessTokenVerifier()->verify((string) $refreshed['access_token']);
+
+        $this->assertSame(['mcp:read'], $claims?->scopes);
     }
 
     public function testARefreshByAnAccountThatGrantsNothingIsRefused(): void
@@ -89,8 +92,10 @@ final class OAuthServerScopeNarrowingTest extends RepositoryTestCase
 
     // --- Helpers ---
 
-    private function oauth(?IdentityProviderInterface $identities = null, ?ScopePolicyInterface $scopePolicy = null): OAuthServer
-    {
+    private function oauth(
+        ?IdentityProviderInterface $identities = null,
+        ?ScopePolicyInterface $scopePolicy = null,
+    ): OAuthServer {
         $oauth = new OAuthServer(
             $this->configuration,
             $identities ?? new StubIdentityProvider(new Identity('jannis', 'Jannis', ['editor'])),
@@ -115,7 +120,7 @@ final class OAuthServerScopeNarrowingTest extends RepositoryTestCase
             'redirect_uri'          => self::REDIRECT_URI,
             'scope'                 => 'mcp:read mcp:write',
             'state'                 => 'xyz',
-            'code_challenge'        => rtrim(strtr(base64_encode(hash('sha256', $this->codeVerifier, true)), '+/', '-_'), '='),
+            'code_challenge'        => Pkce::challengeFor($this->codeVerifier),
             'code_challenge_method' => 'S256',
         ];
 

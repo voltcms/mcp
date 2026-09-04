@@ -50,6 +50,12 @@ final class McpTokenValidator implements AuthorizationTokenValidatorInterface
 
     private const INVALID_TOKEN = 'invalid_token';
 
+    /**
+     * One description for every 401. A caller that could tell "expired" from "revoked" from "no
+     * such account" apart has a small oracle over tokens it does not hold.
+     */
+    private const INVALID_TOKEN_DESCRIPTION = 'The access token is not valid for this resource.';
+
     /** @var list<string> */
     private readonly array $requiredScopes;
 
@@ -71,17 +77,17 @@ final class McpTokenValidator implements AuthorizationTokenValidatorInterface
         $claims = $this->verifier->verify($accessToken);
 
         if ($claims === null || $claims->hasExpired()) {
-            return AuthorizationResult::unauthorized(self::INVALID_TOKEN, 'The access token is not valid for this resource.');
+            return self::refused();
         }
 
         if ($this->accessTokens->isAccessTokenRevoked($claims->identifier)) {
-            return AuthorizationResult::unauthorized(self::INVALID_TOKEN, 'The access token is not valid for this resource.');
+            return self::refused();
         }
 
         $identity = $this->identities->findUser($claims->subject);
 
         if ($identity === null) {
-            return AuthorizationResult::unauthorized(self::INVALID_TOKEN, 'The access token is not valid for this resource.');
+            return self::refused();
         }
 
         $grantable = $this->scopePolicy->grantableFor($identity);
@@ -107,5 +113,10 @@ final class McpTokenValidator implements AuthorizationTokenValidatorInterface
             self::ATTRIBUTE_TOKEN_ID  => $claims->identifier,
             self::ATTRIBUTE_IDENTITY  => $identity,
         ]);
+    }
+
+    private static function refused(): AuthorizationResult
+    {
+        return AuthorizationResult::unauthorized(self::INVALID_TOKEN, self::INVALID_TOKEN_DESCRIPTION);
     }
 }

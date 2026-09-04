@@ -110,6 +110,9 @@ final class AccessTokenRepository extends FileDbRepository implements AccessToke
      */
     private static function scopeIdentifiers(array $scopes): array
     {
-        return array_values(array_map(static fn (ScopeEntityInterface $scope): string => $scope->getIdentifier(), $scopes));
+        return array_values(array_map(
+            static fn (ScopeEntityInterface $scope): string => $scope->getIdentifier(),
+            $scopes,
+        ));
     }
 }

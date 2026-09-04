@@ -89,7 +89,8 @@ final class ManualRegistration
 
         if ($valid === []) {
             throw new \InvalidArgumentException(
-                'A client needs at least one redirect URI; league matches it exactly and refuses a request without one.',
+                'A client needs at least one redirect URI; league matches it exactly and refuses a '
+                . 'request without one.',
                 self::EXCEPTION_REDIRECT_URIS_REQUIRED,
             );
         }

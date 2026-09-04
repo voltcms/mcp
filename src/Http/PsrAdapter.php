@@ -63,7 +63,11 @@ final class PsrAdapter
     public function toServerRequest(Request $request, ?string $absoluteUri = null): ServerRequestInterface
     {
         $psrRequest = $this->serverRequests
-            ->createServerRequest($request->method, $absoluteUri ?? $request->uri, ['REMOTE_ADDR' => $request->clientIp])
+            ->createServerRequest(
+                $request->method,
+                $absoluteUri ?? $request->uri,
+                ['REMOTE_ADDR' => $request->clientIp],
+            )
             ->withQueryParams($request->queryParams)
             ->withParsedBody($request->parsedBody);
 

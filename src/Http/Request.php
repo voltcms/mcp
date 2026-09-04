@@ -265,9 +265,9 @@ final class Request
         }
 
         if (!isset($headers['Authorization']) && is_string($server['PHP_AUTH_USER'] ?? null)) {
-            $credentials = $server['PHP_AUTH_USER'] . ':' . (is_string($server['PHP_AUTH_PW'] ?? null) ? $server['PHP_AUTH_PW'] : '');
+            $password = is_string($server['PHP_AUTH_PW'] ?? null) ? $server['PHP_AUTH_PW'] : '';
 
-            $headers['Authorization'] = 'Basic ' . base64_encode($credentials);
+            $headers['Authorization'] = 'Basic ' . base64_encode($server['PHP_AUTH_USER'] . ':' . $password);
         }
 
         return $headers;

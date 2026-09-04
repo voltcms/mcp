@@ -65,7 +65,11 @@ final class ScopeRepository implements ScopeRepositoryInterface
             }
         }
 
-        if ($this->identities === null || $this->scopePolicy === null || $userIdentifier === null || $userIdentifier === '') {
+        if ($this->identities === null || $this->scopePolicy === null) {
+            return $configured;
+        }
+
+        if ($userIdentifier === null || $userIdentifier === '') {
             return $configured;
         }
 

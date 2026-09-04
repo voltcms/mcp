@@ -12,6 +12,7 @@ use VoltCMS\MCP\OAuth\Entities\Client;
 use VoltCMS\MCP\OAuthServer;
 use VoltCMS\MCP\Tests\Support\RecordingConsentView;
 use VoltCMS\MCP\Tests\Support\RecordingLoginRedirector;
+use VoltCMS\MCP\Tests\Support\Pkce;
 use VoltCMS\MCP\Tests\Support\RepositoryTestCase;
 use VoltCMS\MCP\Tests\Support\StubClientIdMetadataFetcher;
 use VoltCMS\MCP\Tests\Support\StubIdentityProvider;
@@ -46,7 +47,7 @@ final class ClientIdMetadataFlowTest extends RepositoryTestCase
         ]);
 
         $this->consentView  = new RecordingConsentView();
-        $this->codeVerifier = bin2hex(random_bytes(32));
+        $this->codeVerifier = Pkce::verifier();
 
         $this->oauth = new OAuthServer(
             $this->configuration,
@@ -180,7 +181,7 @@ final class ClientIdMetadataFlowTest extends RepositoryTestCase
             'redirect_uri'          => self::REDIRECT_URI,
             'scope'                 => 'mcp:read mcp:write',
             'state'                 => 'xyz',
-            'code_challenge'        => rtrim(strtr(base64_encode(hash('sha256', $this->codeVerifier, true)), '+/', '-_'), '='),
+            'code_challenge'        => Pkce::challengeFor($this->codeVerifier),
             'code_challenge_method' => 'S256',
         ], $overrides);
     }

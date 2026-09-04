@@ -36,8 +36,12 @@ final class UserAccessStore
     /**
      * @param list<string> $groups Display names of groups to put the user in, created if absent.
      */
-    public function createUser(string $userName, string $displayName = '', array $groups = [], bool $active = true): User
-    {
+    public function createUser(
+        string $userName,
+        string $displayName = '',
+        array $groups = [],
+        bool $active = true,
+    ): User {
         $user = new User();
         $user->setUserName($userName);
         $user->setDisplayName($displayName === '' ? $userName : $displayName);

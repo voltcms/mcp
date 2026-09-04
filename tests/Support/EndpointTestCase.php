@@ -77,7 +77,11 @@ abstract class EndpointTestCase extends RepositoryTestCase
             $this->configuration->encryptionKey,
         );
 
-        $authCodeGrant = new AuthCodeGrant($authCodes, $this->refreshTokens, $this->configuration->authorizationCodeTtl);
+        $authCodeGrant = new AuthCodeGrant(
+            $authCodes,
+            $this->refreshTokens,
+            $this->configuration->authorizationCodeTtl,
+        );
         $authCodeGrant->setRefreshTokenTTL($this->configuration->refreshTokenTtl);
         $this->server->enableGrantType($authCodeGrant, $this->configuration->accessTokenTtl);
 
@@ -118,7 +122,7 @@ abstract class EndpointTestCase extends RepositoryTestCase
             $psr,
         );
 
-        $this->codeVerifier = bin2hex(random_bytes(32));
+        $this->codeVerifier = Pkce::verifier();
     }
 
     // --- Requests ---
@@ -152,8 +156,11 @@ abstract class EndpointTestCase extends RepositoryTestCase
     /**
      * @param array<string, mixed> $query
      */
-    protected function postConsent(array $query, string $ticket, string $decision = ConsentRequest::DECISION_APPROVE): Response
-    {
+    protected function postConsent(
+        array $query,
+        string $ticket,
+        string $decision = ConsentRequest::DECISION_APPROVE,
+    ): Response {
         return $this->authorize->handle(new Request(
             'POST',
             '/oauth/authorize?' . http_build_query($query),
@@ -218,6 +225,6 @@ abstract class EndpointTestCase extends RepositoryTestCase
 
     protected function codeChallenge(?string $verifier = null): string
     {
-        return rtrim(strtr(base64_encode(hash('sha256', $verifier ?? $this->codeVerifier, true)), '+/', '-_'), '=');
+        return Pkce::challengeFor($verifier ?? $this->codeVerifier);
     }
 }

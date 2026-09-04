@@ -142,7 +142,9 @@ final class AuthorizeEndpoint extends Endpoint
         $decision = $this->decision($request, $binding);
 
         if ($decision === null) {
-            return $this->consentView->render($this->consentRequest($request, $authRequest, $identity, $granted, $binding));
+            return $this->consentView->render(
+                $this->consentRequest($request, $authRequest, $identity, $granted, $binding),
+            );
         }
 
         $authRequest->setAuthorizationApproved($decision);
@@ -222,10 +224,8 @@ final class AuthorizeEndpoint extends Endpoint
             $requested = $grantable;
         }
 
-        $granted = array_values(array_filter(
-            $requested,
-            fn (string $scope): bool => in_array($scope, $grantable, true) && $this->configuration->scopeIsSupported($scope),
-        ));
+        $granted = array_values(array_filter($requested, fn (string $scope): bool
+            => in_array($scope, $grantable, true) && $this->configuration->scopeIsSupported($scope)));
 
         if ($granted === []) {
             throw OAuthServerException::invalidScope(

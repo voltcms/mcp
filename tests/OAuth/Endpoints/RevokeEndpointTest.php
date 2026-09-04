@@ -92,7 +92,9 @@ final class RevokeEndpointTest extends EndpointTestCase
 
         $this->revokeToken((string) $issued['refresh_token'], self::CONFIDENTIAL_ID, self::CLIENT_SECRET);
 
-        $this->assertFalse($this->refreshTokens->isRefreshTokenRevoked($this->refreshTokenId((string) $issued['refresh_token'])));
+        $tokenId = $this->refreshTokenId((string) $issued['refresh_token']);
+
+        $this->assertFalse($this->refreshTokens->isRefreshTokenRevoked($tokenId));
     }
 
     public function testAnotherClientsRefreshTokenIsStillAnsweredOk(): void

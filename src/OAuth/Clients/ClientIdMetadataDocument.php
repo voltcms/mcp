@@ -120,7 +120,8 @@ final class ClientIdMetadataDocument
         foreach (array_slice(array_values($uris), 0, self::MAXIMUM_REDIRECT_URIS) as $uri) {
             if (!is_string($uri) || !self::redirectUriIsAcceptable($uri)) {
                 throw new \InvalidArgumentException(
-                    'Redirect URIs must be absolute https URLs without a fragment; plain http is accepted only for loopback.',
+                    'Redirect URIs must be absolute https URLs without a fragment; plain http is '
+                    . 'accepted only for loopback.',
                     self::EXCEPTION_REDIRECT_URI_INSECURE,
                 );
             }
@@ -161,7 +162,8 @@ final class ClientIdMetadataDocument
     {
         if (($document['token_endpoint_auth_method'] ?? self::AUTH_METHOD) !== self::AUTH_METHOD) {
             throw new \InvalidArgumentException(
-                'A client identified by a metadata document has no registered secret and must authenticate as a public client.',
+                'A client identified by a metadata document has no registered secret and must '
+                . 'authenticate as a public client.',
                 self::EXCEPTION_AUTH_METHOD_REFUSED,
             );
         }
