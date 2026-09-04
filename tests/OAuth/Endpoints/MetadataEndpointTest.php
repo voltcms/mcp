@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VoltCMS\MCP\Tests\OAuth\Endpoints;
 
+use VoltCMS\MCP\Configuration;
+use VoltCMS\MCP\EndpointUrls;
 use VoltCMS\MCP\Http\PsrAdapter;
 use VoltCMS\MCP\Http\Request;
 use VoltCMS\MCP\Http\Response;
@@ -37,8 +39,36 @@ final class MetadataEndpointTest extends RepositoryTestCase
             'token_endpoint_auth_methods_supported'      => ['none', 'client_secret_basic', 'client_secret_post'],
             'revocation_endpoint_auth_methods_supported' => ['none', 'client_secret_basic', 'client_secret_post'],
             'code_challenge_methods_supported'           => ['S256'],
-            'registration_endpoint'                      => 'https://example.com/oauth/register',
         ], $this->endpoint()->handle($this->get())->decodedBody());
+    }
+
+    /**
+     * Dynamic registration is opt-in, so an unconfigured server must not advertise an endpoint it
+     * does not answer. See docs/decisions/0006-who-answers-registration.md.
+     */
+    public function testDoesNotAdvertiseARegistrationEndpointThatIsNotConfigured(): void
+    {
+        $document = $this->endpoint()->handle($this->get())->decodedBody();
+
+        $this->assertArrayNotHasKey('registration_endpoint', $document);
+    }
+
+    public function testAdvertisesTheRegistrationEndpointWhenOneIsConfigured(): void
+    {
+        $configuration = new Configuration(
+            issuer:           $this->configuration->issuer,
+            resource:         $this->configuration->resource,
+            storageDirectory: $this->configuration->storageDirectory,
+            privateKeyPath:   $this->configuration->privateKeyPath,
+            publicKeyPath:    $this->configuration->publicKeyPath,
+            encryptionKey:    $this->configuration->encryptionKey,
+            scopes:           $this->configuration->scopes,
+            endpoints:        EndpointUrls::below($this->configuration->issuer, withRegistration: true),
+        );
+
+        $document = (new MetadataEndpoint($configuration, new PsrAdapter()))->handle($this->get())->decodedBody();
+
+        $this->assertSame('https://example.com/oauth/register', $document['registration_endpoint'] ?? null);
     }
 
     /**

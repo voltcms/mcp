@@ -14,9 +14,13 @@ use VoltCMS\MCP\Contracts\ScopePolicyInterface;
 use VoltCMS\MCP\Http\PsrAdapter;
 use VoltCMS\MCP\Http\Request;
 use VoltCMS\MCP\Http\Response;
+use VoltCMS\MCP\OAuth\Clients\ClientIdMetadataFetcherInterface;
+use VoltCMS\MCP\OAuth\Clients\ClientIdMetadataResolver;
+use VoltCMS\MCP\OAuth\Clients\ManualRegistration;
 use VoltCMS\MCP\OAuth\Consent\ConsentTicketSigner;
 use VoltCMS\MCP\OAuth\Endpoints\AuthorizeEndpoint;
 use VoltCMS\MCP\OAuth\Endpoints\MetadataEndpoint;
+use VoltCMS\MCP\OAuth\Endpoints\RegisterEndpoint;
 use VoltCMS\MCP\OAuth\Endpoints\RevokeEndpoint;
 use VoltCMS\MCP\OAuth\Endpoints\TokenEndpoint;
 use VoltCMS\MCP\OAuth\Keys\JwksEndpoint;
@@ -68,6 +72,8 @@ final class OAuthServer
     private readonly RevokeEndpoint $revokeEndpoint;
     private readonly MetadataEndpoint $metadataEndpoint;
     private readonly JwksEndpoint $jwksEndpoint;
+    private readonly ?RegisterEndpoint $registerEndpoint;
+    private readonly ClientIdMetadataResolver $clientMetadata;
 
     public function __construct(
         private readonly Configuration $configuration,
@@ -79,13 +85,15 @@ final class OAuthServer
         ?LoginThrottle $throttle = null,
         ?KeyManager $keyManager = null,
         ?PsrAdapter $psr = null,
+        ?ClientIdMetadataFetcherInterface $clientMetadataFetcher = null,
     ) {
         $psr = $psr ?? new PsrAdapter();
 
         $this->keyManager = $keyManager ?? new KeyManager($configuration);
         $this->keyManager->ensureKeyPair();
 
-        $this->clientRepository       = new ClientRepository($configuration, $auditLog);
+        $this->clientMetadata         = new ClientIdMetadataResolver($configuration, $clientMetadataFetcher, $auditLog);
+        $this->clientRepository       = new ClientRepository($configuration, $auditLog, $this->clientMetadata);
         $this->accessTokenRepository  = new AccessTokenRepository($configuration, $auditLog, $this->keyManager);
         $this->refreshTokenRepository = new RefreshTokenRepository($configuration, $auditLog);
 
@@ -139,6 +147,12 @@ final class OAuthServer
 
         $this->metadataEndpoint = new MetadataEndpoint($configuration, $psr);
         $this->jwksEndpoint     = new JwksEndpoint($configuration, $this->keyManager, $psr);
+
+        // Built only when the deployment configured a registration URL. Nothing advertises the
+        // endpoint otherwise, and `register()` answers as if it were not routed — which it is not.
+        $this->registerEndpoint = $configuration->registrationEndpoint === null
+            ? null
+            : new RegisterEndpoint($configuration, $this->registrations(), $psr, $auditLog, $throttle);
     }
 
     // --- Endpoints ---
@@ -169,6 +183,19 @@ final class OAuthServer
         return $this->jwksEndpoint->handle($request);
     }
 
+    /**
+     * RFC 7591 dynamic registration, if this deployment asked for it. If it did not, this answers
+     * exactly as an unrouted path would — there is no endpoint here, and saying so is the honest
+     * response to a client that guessed the URL.
+     */
+    public function register(Request $request): Response
+    {
+        return $this->registerEndpoint?->handle($request) ?? Response::json([
+            'error'             => 'invalid_request',
+            'error_description' => 'This server does not offer dynamic client registration.',
+        ], Response::STATUS_NOT_FOUND);
+    }
+
     // --- Collaborators ---
 
     /**
@@ -183,6 +210,18 @@ final class OAuthServer
     public function keys(): KeyManager
     {
         return $this->keyManager;
+    }
+
+    /** Register or deactivate a client from a script, which for most deployments is all that is needed. */
+    public function registrations(): ManualRegistration
+    {
+        return new ManualRegistration($this->clientRepository);
+    }
+
+    /** The Client ID Metadata Document cache, for a deployment that wants to drop an entry. */
+    public function clientMetadata(): ClientIdMetadataResolver
+    {
+        return $this->clientMetadata;
     }
 
     /**
@@ -221,6 +260,7 @@ final class OAuthServer
         return $this->accessTokenRepository->purgeExpired($now)
             + $this->refreshTokenRepository->purgeExpired($now)
             + (new AuthCodeRepository($this->configuration))->purgeExpired($now)
+            + $this->clientMetadata->purgeExpired($now)
             + $this->keyManager->purgeRetiredKeys($now);
     }
 }

@@ -145,6 +145,48 @@ Identity is not on that list. If you already use `voltcms/useraccess`, pass it y
 and `groups/` directories and you are done — `UserAccessIdentityProvider` is concrete.
 `IdentityProviderInterface` is there for applications with a different user store.
 
+A complete, runnable version of all of this is in [`examples/blog/`](examples/blog/) — three tools,
+a consent page, a login page and one front controller.
+
+## Clients
+
+A client this server has never met identifies itself with a **Client ID Metadata Document**: its
+`client_id` is an https URL, and the JSON served there describes it. Nothing is registered, nothing
+is written, and the 2026-07-28 MCP specification prefers it. It is on by default.
+
+```json
+{
+    "client_id": "https://claude.ai/client.json",
+    "client_name": "Claude Desktop",
+    "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"]
+}
+```
+
+Fetching a URL a request named is server-side request forgery unless it is guarded, so it is:
+HTTPS on port 443 only, no redirects at all, every resolved address checked against the private,
+loopback, link-local and reserved ranges, a 64 KB cap, a five-second timeout, and both the answer
+and the refusal cached. The document must claim the URL it was served from, or an attacker's
+document could name itself Claude on your consent screen.
+
+A client you know about is registered once, from a script:
+
+```php
+$client = $oauth->registrations()->registerPublic('Claude Desktop', ['https://claude.ai/callback']);
+```
+
+**Dynamic client registration (RFC 7591) is off unless you ask for it.** An open registration
+endpoint is an unauthenticated write endpoint on your credential store, and metadata documents
+already do the job. If you have a reason for it:
+
+```php
+$config = new Configuration(
+    // ...
+    endpoints: EndpointUrls::below('https://example.com', withRegistration: true),
+);
+```
+
+See [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md).
+
 ## Serving the `.well-known` documents
 
 This package renders the metadata documents; routing them is deployment, and every host
@@ -176,7 +218,8 @@ most of the point of the package.
 
 ```php
 // bin/mcp-maintenance.php
-$oauth->purgeExpired();      // expired codes, tokens and retired signing keys
+$oauth->purgeExpired();      // expired codes, tokens, cached client documents, retired keys
+$mcp->sessions()->purge();   // handshake-era MCP sessions
 ```
 
 ```bash
@@ -221,6 +264,9 @@ hosting, where standing up an identity provider costs more than the feature is w
   overlapping keys in JWKS, and who triggers a rotation
 - [`docs/decisions/0005-validation-reads-the-store.md`](docs/decisions/0005-validation-reads-the-store.md)
   — what the flat-file lookup costs, measured, and why revocation is immediate
+- [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md)
+  — Client ID Metadata Documents, why dynamic registration is opt-in, and which package answers
+- [`examples/blog/`](examples/blog/) — the whole flow, runnable
 - [`SECURITY.md`](SECURITY.md) — what this package guarantees, and what it does not
 - [`CLAUDE.md`](CLAUDE.md) — coding standards and the invariants that must not be simplified away
 

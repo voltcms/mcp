@@ -6,7 +6,10 @@ namespace VoltCMS\MCP\OAuth\Repositories;
 
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
+use VoltCMS\MCP\Configuration;
+use VoltCMS\MCP\OAuth\Clients\ClientIdMetadataResolver;
 use VoltCMS\MCP\OAuth\Entities\Client;
+use VoltCMS\UserAccess\AuditLog;
 
 /**
  * Registered clients, stored flat.
@@ -31,6 +34,21 @@ final class ClientRepository extends FileDbRepository implements ClientRepositor
      */
     private const DECOY_HASH = '$2y$12$s04y0HBbcQVm33PFj4SGEO3ACsZxp4qTfTVXMa0A81Eg.bb.GFywe';
 
+    /**
+     * When a resolver is given, a `client_id` that is an https URL is treated as a Client ID
+     * Metadata Document and resolved by fetching it — the identification the 2026-07-28 MCP
+     * specification prefers, and the reason this server can accept a client it has never met
+     * without running an unauthenticated write endpoint. Null leaves the store as the only source
+     * of clients. See docs/decisions/0006-who-answers-registration.md.
+     */
+    public function __construct(
+        Configuration $configuration,
+        ?AuditLog $auditLog = null,
+        private readonly ?ClientIdMetadataResolver $metadataResolver = null,
+    ) {
+        parent::__construct($configuration, $auditLog);
+    }
+
     protected function collection(): string
     {
         return 'clients';
@@ -40,18 +58,39 @@ final class ClientRepository extends FileDbRepository implements ClientRepositor
     {
         $record = $this->find($clientIdentifier);
 
-        if ($record === null || ($record[self::FIELD_REVOKED] ?? false) === true) {
-            return null;
+        if ($record !== null) {
+            // A stored record wins over a metadata document at the same identifier, so deactivating
+            // a client here is final: it cannot re-admit itself by serving a document.
+            return ($record[self::FIELD_REVOKED] ?? false) === true ? null : $this->toEntity($record);
         }
 
-        return $this->toEntity($record);
+        if ($this->metadataResolver !== null && ClientIdMetadataResolver::looksLikeMetadataUrl($clientIdentifier)) {
+            return $this->metadataResolver->resolve($clientIdentifier);
+        }
+
+        return null;
     }
 
     public function validateClient(string $clientIdentifier, ?string $clientSecret, ?string $grantType): bool
     {
         $record = $this->find($clientIdentifier);
 
-        if ($record === null || ($record[self::FIELD_REVOKED] ?? false) === true) {
+        if ($record === null) {
+            $client = $this->getClientEntity($clientIdentifier);
+
+            if ($client === null) {
+                password_verify((string) $clientSecret, self::DECOY_HASH);
+
+                return false;
+            }
+
+            // A client identified by a metadata document holds no secret and never should:
+            // presenting one means the caller thinks it is something it is not.
+            return ($grantType === null || $client->supportsGrantType($grantType))
+                && ($clientSecret === null || $clientSecret === '');
+        }
+
+        if (($record[self::FIELD_REVOKED] ?? false) === true) {
             password_verify((string) $clientSecret, self::DECOY_HASH);
 
             return false;

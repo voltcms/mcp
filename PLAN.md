@@ -299,7 +299,7 @@ commit** — this is credential issuance.
       address
 - [x] `CHANGELOG.md`, `LICENSE`, `CLAUDE.md` (§9)
 - [x] `docs/decisions/0001-build-vs-adopt.md`, `0002-wrap-or-write.md` — copied in
-- [ ] `examples/blog/` — the full flow: tools, consent page, `.well-known`, end to end
+- [x] `examples/blog/` — the full flow: tools, consent page, `.well-known`, end to end
 - [x] `.gitignore` — `/vendor/`, `.phpunit.result.cache`, and **the key directory**
 
 ---
@@ -314,7 +314,7 @@ commit** — this is credential issuance.
 | **P3 — the tightenings** | ✅ Done. `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
 | **P4 — metadata & keys** | ✅ Done. RFC 8414 document, `KeyManager`, JWKS endpoint, and the `OAuthServer` façade that assembles them. **First usable release.** | 1 day |
 | **P5 — identity & bridge** | ✅ Done. `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
-| **P6 — clients & polish** | CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example, an end-to-end pass with MCP Inspector and Claude Code, tag `0.1.0`. | 1–1.5 days |
+| **P6 — clients & polish** | ✅ Done. CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example. Remaining before `0.1.0`: an end-to-end pass against MCP Inspector and a real Claude client, which needs a deployed host. | 1–1.5 days |
 
 **≈ 4–7 focused days.** The consuming application works against a `path` repository from P4.
 
@@ -355,7 +355,11 @@ commit** — this is credential issuance.
    **Answered in P5: accept.** Measured at 0.45 ms per 100 records and 5.24 ms per 1 000; a swept
    deployment holds about 24 records per active client. See
    `docs/decisions/0005-validation-reads-the-store.md`.
-3. **Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.
+3. ~~**Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.~~
+   **Answered in P6: us, and off by default.** The SDK's middleware belongs to its OAuth-proxy
+   story and rewrites a metadata document we render ourselves. Client ID Metadata Documents accept
+   an unknown client without an unauthenticated write endpoint, so DCR is opt-in. See
+   `docs/decisions/0006-who-answers-registration.md`.
 4. **`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
    the consumer's `2.0.2` pin.
 5. **Legacy-era session store** — `mcp/sdk` treats the 2025 lifecycle as stateful and needs a

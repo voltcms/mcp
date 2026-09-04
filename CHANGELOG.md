@@ -92,6 +92,28 @@ changes are permitted in `0.x` and are recorded here.
   localhost-only default would otherwise 403 every request to a deployed server.
 - `Http\Request::$rawBody`: the body as it arrived. MCP posts `application/json`, which PHP never
   puts in `$_POST`, so a request object carrying only the parsed form could not reach the SDK.
+- Client ID Metadata Documents, on by default: a `client_id` that is an https URL is resolved by
+  fetching the document there, so a client this server has never met needs no registration.
+  `OAuth\Clients\ClientIdMetadataDocument` validates it, `ClientIdMetadataResolver` fetches and
+  caches it, `SsrfGuard` decides whether the URL may be fetched at all, and
+  `StreamClientIdMetadataFetcher` is the default transport. See
+  `docs/decisions/0006-who-answers-registration.md`.
+- `OAuth\Clients\ManualRegistration`: registering a client from a script, which for most
+  deployments is the only registration there is. It generates the identifier and, for a confidential
+  client, the secret — returned once, stored only as a hash.
+- `OAuth\Endpoints\RegisterEndpoint`: RFC 7591 dynamic registration, **off unless a deployment asks
+  for it** with `EndpointUrls::below(..., withRegistration: true)`. `mcp/sdk` also ships a
+  registration middleware; it is deliberately not installed.
+- `OAuthServer::register()`, `registrations()` and `clientMetadata()`.
+- `FileDbRepository::upsert()`, for caches, where writing over the previous entry is the point.
+- `examples/blog/`: the whole flow — three tools, a consent page, a login page, one front
+  controller, a cron entry and a registration script.
+
+### Changed
+
+- `EndpointUrls::below()` no longer gives registration a URL unless asked. A server that has not
+  opted in leaves `Configuration::$registrationEndpoint` null, does not advertise
+  `registration_endpoint` in its RFC 8414 metadata, and answers `OAuthServer::register()` with 404.
 
 ### Security
 
@@ -120,5 +142,18 @@ changes are permitted in `0.x` and are recorded here.
   the store lowercases before looking up.
 - Every refusal from `McpTokenValidator` returns the same description, so a caller cannot tell
   "expired" from "revoked" from "no such account".
+- Client metadata fetches are guarded against server-side request forgery: HTTPS on the default
+  port only, no redirects, and every address the host resolves to checked against the private,
+  loopback, link-local and reserved ranges — because `metadata.attacker.example` resolving to
+  `169.254.169.254` is the attack, and no hostname filter catches it. `ext-curl`, when present,
+  pins the connection to the approved address so DNS is resolved once.
+- Both successes and refusals are cached, so a `client_id` naming somebody else's URL cannot turn
+  this server into an amplifier.
+- A client metadata document must claim the URL it was served from, or an attacker's document could
+  name itself Claude on a user's consent screen.
+- A stored client record wins over a metadata document at the same identifier, so deactivating a
+  client is final.
+- Dynamic client registration is opt-in, and nothing advertises a registration endpoint that is not
+  configured.
 
 [Unreleased]: https://github.com/voltcms/mcp/commits/main

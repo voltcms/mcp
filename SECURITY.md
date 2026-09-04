@@ -57,9 +57,19 @@ Each of these is backed by a test that fails if the guarantee breaks.
   redirect URI, the granted scopes, the code challenge and the state — so a cross-site POST
   cannot approve an authorization request.
 - **Every issuance, refresh and revocation is written to the audit log.**
-- **Client ID Metadata Document fetches are guarded**: HTTPS only, no cross-host redirects, no
-  private or link-local addresses, a size cap, a cached TTL, and a timeout short enough for
-  shared hosting.
+- **Client ID Metadata Document fetches are guarded**: HTTPS on the default port only, no
+  redirects at all, no private, loopback, link-local or reserved address — checked against every
+  address the host resolves to, not the hostname — a 64 KB cap, a five-second timeout, and both
+  answers and refusals cached so a `client_id` naming somebody else's URL cannot make this server
+  an amplifier. Where `ext-curl` is available the connection is pinned to the approved address, so
+  DNS is resolved once; where it is not, that race remains and
+  [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md)
+  says so.
+- **A client metadata document must claim the URL it was served from.** Otherwise
+  `https://attacker.example/client.json` could serve a document naming itself Claude, and a user
+  would approve a consent screen naming Claude while the code went elsewhere.
+- **Dynamic client registration is off unless a deployment asks for it**, because an open
+  registration endpoint is an unauthenticated write endpoint on the credential store.
 
 ## What this package does not guarantee
 

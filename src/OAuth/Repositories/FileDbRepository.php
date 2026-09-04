@@ -118,6 +118,36 @@ abstract class FileDbRepository
     }
 
     /**
+     * Write a record, replacing any that already carries the same identifier.
+     *
+     * Distinct from `insert()`, which refuses a duplicate identifier because a duplicate TOKEN
+     * identifier is league's `UniqueTokenIdentifierConstraintViolationException` and a real fault.
+     * A cache entry is the opposite: writing over the previous one is the whole point.
+     *
+     * @param array<string, mixed> $record
+     */
+    protected function upsert(array $record): void
+    {
+        Lock::exclusive(function () use ($record): void {
+            $oauthId = $record[self::FIELD_OAUTH_ID] ?? '';
+
+            if (!is_string($oauthId) || $oauthId === '') {
+                return;
+            }
+
+            $existing = $this->find($oauthId);
+
+            if ($existing === null) {
+                $this->db->create($record);
+
+                return;
+            }
+
+            $this->db->update((string) $existing[FileDB::ATTRIBUTE_ID], $record);
+        });
+    }
+
+    /**
      * Flag a record revoked. A record that is not there is already revoked by definition, so
      * this is a no-op rather than a failure — league revokes optimistically.
      */

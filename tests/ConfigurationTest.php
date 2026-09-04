@@ -26,6 +26,21 @@ final class ConfigurationTest extends TestCase
         $this->assertSame('https://example.com/oauth/token', $config->tokenEndpoint);
         $this->assertSame('https://example.com/oauth/revoke', $config->revocationEndpoint);
         $this->assertSame('https://example.com/oauth/jwks', $config->jwksUri);
+    }
+
+    /**
+     * Dynamic registration is off unless a deployment asks for it, so nothing advertises a
+     * registration endpoint by accident. See docs/decisions/0006-who-answers-registration.md.
+     */
+    public function testDoesNotOfferARegistrationEndpointByDefault(): void
+    {
+        $this->assertNull($this->configuration()->registrationEndpoint);
+    }
+
+    public function testOffersARegistrationEndpointWhenOneIsAskedFor(): void
+    {
+        $config = $this->configuration(endpoints: EndpointUrls::below('https://example.com', withRegistration: true));
+
         $this->assertSame('https://example.com/oauth/register', $config->registrationEndpoint);
     }
 

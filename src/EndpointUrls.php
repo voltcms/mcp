@@ -47,9 +47,19 @@ final class EndpointUrls
     /**
      * The conventional layout: every endpoint under one prefix on the issuer's origin. A
      * deployment that routes differently constructs this class directly instead.
+     *
+     * Registration is off unless asked for, and the default is the interesting part. An open
+     * registration endpoint is an unauthenticated write endpoint on the credential store, and
+     * Client ID Metadata Documents do the same job — accepting a client this server has never met
+     * — without one. A deployment that has a reason for dynamic registration passes
+     * `withRegistration: true` and takes that on knowingly. See
+     * docs/decisions/0006-who-answers-registration.md.
      */
-    public static function below(string $issuer, string $prefix = self::DEFAULT_PREFIX): self
-    {
+    public static function below(
+        string $issuer,
+        string $prefix = self::DEFAULT_PREFIX,
+        bool $withRegistration = false,
+    ): self {
         $base = rtrim($issuer, '/') . '/' . trim($prefix, '/');
 
         return new self(
@@ -57,7 +67,7 @@ final class EndpointUrls
             $base . '/token',
             $base . '/revoke',
             $base . '/jwks',
-            $base . '/register',
+            $withRegistration ? $base . '/register' : null,
         );
     }
 }
