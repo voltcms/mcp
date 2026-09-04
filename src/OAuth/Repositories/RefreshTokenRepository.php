@@ -62,4 +62,25 @@ final class RefreshTokenRepository extends FileDbRepository implements RefreshTo
     {
         return $this->isRevoked($tokenId);
     }
+
+    /**
+     * Revoke whichever refresh token was issued alongside this access token.
+     *
+     * RFC 7009 §2.1 leaves this optional — "the server MAY revoke the respective refresh token as
+     * well" — but leaving it undone is what makes a revocation feel like it did nothing: the
+     * client's next refresh succeeds and it is issued a fresh access token minutes later. Since
+     * this is the store that decides whether a grant is still alive, this is where the grant ends.
+     *
+     * @return int Number of refresh tokens newly revoked.
+     */
+    public function revokeForAccessToken(string $accessTokenId): int
+    {
+        $revoked = $this->revokeWhere(self::FIELD_ACCESS_TOKEN_ID, $accessTokenId);
+
+        if ($revoked > 0) {
+            $this->audit('refresh_token.revoked', ['access_token_id' => $accessTokenId]);
+        }
+
+        return $revoked;
+    }
 }

@@ -51,6 +51,9 @@ final class Configuration
     public const EXCEPTION_SCOPES_REQUIRED          = 1011;
     public const EXCEPTION_SCOPE_MALFORMED          = 1012;
     public const EXCEPTION_SCOPE_DUPLICATED         = 1013;
+    public const EXCEPTION_ENDPOINT_REQUIRED        = 1014;
+    public const EXCEPTION_ENDPOINT_MALFORMED       = 1015;
+    public const EXCEPTION_ENDPOINT_INSECURE        = 1016;
 
     /** Hosts for which plain HTTP is tolerated, because there is no transport to secure. */
     private const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '::1', '[::1]'];
@@ -79,6 +82,16 @@ final class Configuration
     public readonly \DateInterval $accessTokenTtl;
     public readonly \DateInterval $refreshTokenTtl;
 
+    /** Absolute URL of the authorize endpoint; also the action of the consent form. */
+    public readonly string $authorizationEndpoint;
+
+    public readonly string $tokenEndpoint;
+    public readonly string $revocationEndpoint;
+    public readonly string $jwksUri;
+
+    /** Null when this server does not answer dynamic client registration. See PLAN.md §4.4. */
+    public readonly ?string $registrationEndpoint;
+
     /**
      * @param list<string> $scopes
      *
@@ -95,6 +108,7 @@ final class Configuration
         ?\DateInterval $authorizationCodeTtl = null,
         ?\DateInterval $accessTokenTtl = null,
         ?\DateInterval $refreshTokenTtl = null,
+        ?EndpointUrls $endpoints = null,
     ) {
         $this->issuer   = $this->normaliseUrl(
             $issuer,
@@ -120,6 +134,16 @@ final class Configuration
         $this->authorizationCodeTtl = $authorizationCodeTtl ?? new \DateInterval(self::DEFAULT_AUTHORIZATION_CODE_TTL);
         $this->accessTokenTtl       = $accessTokenTtl ?? new \DateInterval(self::DEFAULT_ACCESS_TOKEN_TTL);
         $this->refreshTokenTtl      = $refreshTokenTtl ?? new \DateInterval(self::DEFAULT_REFRESH_TOKEN_TTL);
+
+        $endpoints = $endpoints ?? EndpointUrls::below($this->issuer);
+
+        $this->authorizationEndpoint = $this->normaliseEndpoint($endpoints->authorization, 'Authorization endpoint');
+        $this->tokenEndpoint         = $this->normaliseEndpoint($endpoints->token, 'Token endpoint');
+        $this->revocationEndpoint    = $this->normaliseEndpoint($endpoints->revocation, 'Revocation endpoint');
+        $this->jwksUri               = $this->normaliseEndpoint($endpoints->jwks, 'JWKS URI');
+        $this->registrationEndpoint  = $endpoints->registration === null
+            ? null
+            : $this->normaliseEndpoint($endpoints->registration, 'Registration endpoint');
     }
 
     public function scopeIsSupported(string $scope): bool
@@ -128,6 +152,18 @@ final class Configuration
     }
 
     // --- Validation ---
+
+    /** Endpoint URLs answer to the same rules as the issuer; only the failure codes differ. */
+    private function normaliseEndpoint(string $url, string $label): string
+    {
+        return $this->normaliseUrl(
+            $url,
+            self::EXCEPTION_ENDPOINT_REQUIRED,
+            self::EXCEPTION_ENDPOINT_MALFORMED,
+            self::EXCEPTION_ENDPOINT_INSECURE,
+            $label,
+        );
+    }
 
     /**
      * An absolute https URL with no credentials, query or fragment, and no trailing slash.

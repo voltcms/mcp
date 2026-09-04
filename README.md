@@ -8,12 +8,16 @@ package lets one speak the Model Context Protocol to a remote client — a Claud
 ChatGPT session, Claude Code — with a real OAuth 2.1 authorization server backed by nothing
 but files on disk.
 
-> ### Status: pre-release, under construction
+> ### Status: pre-release, feature-complete
 >
-> The plan and both spike-backed decision records are complete; the implementation is being
-> built out phase by phase (see [`PLAN.md`](PLAN.md) §8). **Nothing here is released yet, and
-> the API shown below is the intended shape, not a shipped one.** Do not put this in front of
-> real credentials until `0.1.0` is tagged.
+> All six delivery phases are implemented and tested (see [`PLAN.md`](PLAN.md) §8): the OAuth
+> repositories, the S256 and RFC 8707 tightenings, the authorize, token, revoke, metadata, JWKS and
+> registration endpoints, signing-key management and rotation, identity and scope policy, the bridge
+> into `mcp/sdk`, and Client ID Metadata Documents. 435 tests run on PHP 8.2, 8.3 and 8.4.
+>
+> **No version is tagged yet.** What is left before `0.1.0` is a live pass — MCP Inspector and a
+> real Claude client against a deployed host — not more code. Until then, treat this as unreviewed
+> and do not point it at production credentials.
 
 ---
 
@@ -61,8 +65,6 @@ composer require nyholm/psr7 nyholm/psr7-server
 
 ## A worked example
 
-*(Intended API — see the status note above.)*
-
 Configuration is explicit on purpose. The issuer URL is never derived from `$_SERVER`, because
 `Host` is attacker-controlled and a forged one would publish an attacker's origin as your
 authorization server.
@@ -80,6 +82,30 @@ $config = new Configuration(
     scopes:           ['mcp:read', 'mcp:write'],
 );
 ```
+
+The authorization server assembles itself from that configuration and the two seams below. Route
+to it and emit what it returns:
+
+```php
+use VoltCMS\MCP\Http\Request;
+use VoltCMS\MCP\OAuth\Endpoints\MetadataEndpoint;
+use VoltCMS\MCP\OAuthServer;
+
+$oauth   = new OAuthServer($config, $identity, $scopePolicy, $consentView, $loginRedirector);
+$request = Request::fromGlobals();
+
+$response = match ($path) {
+    '/oauth/authorize'                => $oauth->authorize($request),
+    '/oauth/token'                    => $oauth->token($request),
+    '/oauth/revoke'                   => $oauth->revoke($request),
+    '/oauth/jwks'                     => $oauth->jwks($request),
+    MetadataEndpoint::WELL_KNOWN_PATH => $oauth->metadata($request),
+};
+```
+
+The signing keypair is generated on first construction — 2048-bit RSA, private key `0600`, both
+files under `privateKeyPath`'s directory with a deny-all `.htaccess` beside them. There is no
+install step.
 
 Your application supplies its tools, its consent markup and its content directories. Nothing
 else:
@@ -121,6 +147,48 @@ Identity is not on that list. If you already use `voltcms/useraccess`, pass it y
 and `groups/` directories and you are done — `UserAccessIdentityProvider` is concrete.
 `IdentityProviderInterface` is there for applications with a different user store.
 
+A complete, runnable version of all of this is in [`examples/blog/`](examples/blog/) — three tools,
+a consent page, a login page and one front controller.
+
+## Clients
+
+A client this server has never met identifies itself with a **Client ID Metadata Document**: its
+`client_id` is an https URL, and the JSON served there describes it. Nothing is registered, nothing
+is written, and the 2026-07-28 MCP specification prefers it. It is on by default.
+
+```json
+{
+    "client_id": "https://claude.ai/client.json",
+    "client_name": "Claude Desktop",
+    "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"]
+}
+```
+
+Fetching a URL a request named is server-side request forgery unless it is guarded, so it is:
+HTTPS on port 443 only, no redirects at all, every resolved address checked against the private,
+loopback, link-local and reserved ranges, a 64 KB cap, a five-second timeout, and both the answer
+and the refusal cached. The document must claim the URL it was served from, or an attacker's
+document could name itself Claude on your consent screen.
+
+A client you know about is registered once, from a script:
+
+```php
+$client = $oauth->registrations()->registerPublic('Claude Desktop', ['https://claude.ai/callback']);
+```
+
+**Dynamic client registration (RFC 7591) is off unless you ask for it.** An open registration
+endpoint is an unauthenticated write endpoint on your credential store, and metadata documents
+already do the job. If you have a reason for it:
+
+```php
+$config = new Configuration(
+    // ...
+    endpoints: EndpointUrls::below('https://example.com', withRegistration: true),
+);
+```
+
+See [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md).
+
 ## Serving the `.well-known` documents
 
 This package renders the metadata documents; routing them is deployment, and every host
@@ -145,6 +213,28 @@ location = /.well-known/oauth-protected-resource   { rewrite ^ /mcp.php?doc=pr l
 Some hosts ship a literal `.well-known/` directory that shadows these rules — check that the
 document is actually served by PHP before debugging anything else.
 
+## Housekeeping
+
+Two things want running occasionally, and neither can run itself: there is no daemon, which is
+most of the point of the package.
+
+```php
+// bin/mcp-maintenance.php
+$oauth->purgeExpired();      // expired codes, tokens, cached client documents, retired keys
+$mcp->sessions()->purge();   // handshake-era MCP sessions
+```
+
+```bash
+# Sweep nightly; rotate the signing key quarterly.
+17 3 * * *   php /path/to/bin/mcp-maintenance.php
+0  4 1 */3 * php -r 'require "bootstrap.php"; $oauth->keys()->rotate();'
+```
+
+Rotation does not disconnect anyone. The retired public key stays in the JWKS until the last
+token it signed has expired, so live clients keep working and pick up the new key on their next
+fetch — see [`docs/decisions/0004-key-rotation.md`](docs/decisions/0004-key-rotation.md). Left
+unswept, the token collections grow without bound and every lookup slows with them.
+
 ## When to use an external IdP instead
 
 Honestly: often.
@@ -154,9 +244,9 @@ package — if **any** of these are true:
 
 - You have more than a handful of users, or users who are not you.
 - You need SSO, MFA, or an account lifecycle someone else administers.
-- You need instant revocation of an access token. Ours are JWTs with a one-hour TTL;
-  revoking the *grant* is immediate, revoking an already-issued access token is not
-  (see [`SECURITY.md`](SECURITY.md)).
+- You need federation, or tokens other services validate on their own. Ours are validated in
+  this process, against this store — which is what makes revocation immediate, and also what
+  makes them useless to a second service.
 - You have a database and an operations story, so "no daemon" buys you nothing.
 - Your compliance regime expects an audited identity product.
 
@@ -170,6 +260,15 @@ hosting, where standing up an identity provider costs more than the feature is w
   adopt `mcp/sdk` rather than write a protocol layer
 - [`docs/decisions/0002-wrap-or-write.md`](docs/decisions/0002-wrap-or-write.md) — why we wrap
   `league/oauth2-server` rather than write a token issuer
+- [`docs/decisions/0003-consent-seam.md`](docs/decisions/0003-consent-seam.md) — how a consent
+  approval is bound to the request it was shown for, without a session
+- [`docs/decisions/0004-key-rotation.md`](docs/decisions/0004-key-rotation.md) — key lifetime,
+  overlapping keys in JWKS, and who triggers a rotation
+- [`docs/decisions/0005-validation-reads-the-store.md`](docs/decisions/0005-validation-reads-the-store.md)
+  — what the flat-file lookup costs, measured, and why revocation is immediate
+- [`docs/decisions/0006-who-answers-registration.md`](docs/decisions/0006-who-answers-registration.md)
+  — Client ID Metadata Documents, why dynamic registration is opt-in, and which package answers
+- [`examples/blog/`](examples/blog/) — the whole flow, runnable
 - [`SECURITY.md`](SECURITY.md) — what this package guarantees, and what it does not
 - [`CLAUDE.md`](CLAUDE.md) — coding standards and the invariants that must not be simplified away
 

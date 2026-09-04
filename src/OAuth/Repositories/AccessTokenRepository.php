@@ -8,7 +8,10 @@ use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
+use VoltCMS\MCP\Configuration;
 use VoltCMS\MCP\OAuth\Entities\ResourceBoundAccessToken;
+use VoltCMS\MCP\OAuth\Keys\KeyManager;
+use VoltCMS\UserAccess\AuditLog;
 
 /**
  * Issued access tokens.
@@ -26,6 +29,20 @@ final class AccessTokenRepository extends FileDbRepository implements AccessToke
     public const FIELD_USER_ID   = 'user_id';
     public const FIELD_SCOPES    = 'scopes';
 
+    /**
+     * The KeyManager is optional and used for one thing: stamping the signing key's `kid` into the
+     * token header. Without it the token is still valid, but a consumer reading a JWKS that
+     * publishes more than one key — which is what a rotation produces — has no way to tell which
+     * one to verify with.
+     */
+    public function __construct(
+        Configuration $configuration,
+        ?AuditLog $auditLog = null,
+        private readonly ?KeyManager $keys = null,
+    ) {
+        parent::__construct($configuration, $auditLog);
+    }
+
     protected function collection(): string
     {
         return 'access_tokens';
@@ -39,7 +56,11 @@ final class AccessTokenRepository extends FileDbRepository implements AccessToke
         array $scopes,
         string|null $userIdentifier = null,
     ): AccessTokenEntityInterface {
-        $token = new ResourceBoundAccessToken($this->configuration->issuer, $this->configuration->resource);
+        $token = new ResourceBoundAccessToken(
+            $this->configuration->issuer,
+            $this->configuration->resource,
+            $this->keys?->keyId(),
+        );
         $token->setClient($clientEntity);
 
         foreach ($scopes as $scope) {
@@ -89,6 +110,9 @@ final class AccessTokenRepository extends FileDbRepository implements AccessToke
      */
     private static function scopeIdentifiers(array $scopes): array
     {
-        return array_values(array_map(static fn (ScopeEntityInterface $scope): string => $scope->getIdentifier(), $scopes));
+        return array_values(array_map(
+            static fn (ScopeEntityInterface $scope): string => $scope->getIdentifier(),
+            $scopes,
+        ));
     }
 }

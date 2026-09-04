@@ -58,8 +58,8 @@ repositories plus two security tightenings that are easy to get wrong. This pack
 | Composer package | `voltcms/mcp` |
 | Namespace | `VoltCMS\MCP\` |
 | PHP | `^8.2` |
-| Requires | `mcp/sdk` (pinned `0.8.*`), `league/oauth2-server ^9.4`, `voltcms/useraccess`, `ext-json`, `ext-openssl` |
-| Suggests | a PSR-17 implementation (`nyholm/psr7` recommended) |
+| Requires | `mcp/sdk` (pinned `0.8.*`), `league/oauth2-server ^9.4`, `voltcms/useraccess`, `lcobucci/jwt`, `php-http/discovery`, `psr/http-factory`, `psr/http-message`, `ext-json`, `ext-openssl` |
+| Suggests | a PSR-17 implementation (`nyholm/psr7` recommended) — discovered at runtime, and needed by `mcp/sdk`'s HTTP transport anyway |
 | License | MIT |
 | Versioning | Semver from `0.1.0`; breaking changes allowed in `0.x` and recorded in `CHANGELOG.md` |
 
@@ -243,10 +243,11 @@ tripwire — if they ever start failing, something has begun delegating to FileD
 ## 5. Security posture, stated plainly
 
 - **Access tokens are JWTs with a one-hour TTL.** They are self-contained and readable by
-  anyone holding one, and revoking an access token before it expires is not instant unless a
-  store lookup runs on every request. Revoking the **grant** kills the refresh path
-  immediately, which is the control that matters. `SECURITY.md` says this in these words
-  rather than implying instant revocation.
+  anyone holding one. Revocation *is* immediate: P5 measured the store lookup and put it on the
+  validation path, so a revoked access token stops working at once rather than running out its
+  hour — see `docs/decisions/0005-validation-reads-the-store.md`. Revoking either end of a grant
+  revokes both. What `SECURITY.md` still says plainly is what remains true: a request already in
+  flight finishes, and a token's claims are readable by anyone holding it.
 - **Scopes are re-checked against the live user record on every validation.** A deactivated
   account or a removed role invalidates a live token now, not at expiry. This is
   `UserAccessIdentityProvider`'s job and it is the reason `findUser()` exists separately from
@@ -298,7 +299,7 @@ commit** — this is credential issuance.
       address
 - [x] `CHANGELOG.md`, `LICENSE`, `CLAUDE.md` (§9)
 - [x] `docs/decisions/0001-build-vs-adopt.md`, `0002-wrap-or-write.md` — copied in
-- [ ] `examples/blog/` — the full flow: tools, consent page, `.well-known`, end to end
+- [x] `examples/blog/` — the full flow: tools, consent page, `.well-known`, end to end
 - [x] `.gitignore` — `/vendor/`, `.phpunit.result.cache`, and **the key directory**
 
 ---
@@ -310,12 +311,15 @@ commit** — this is credential issuance.
 | **P0 — spikes** | ✅ Done — decisions 0001 and 0002. | — |
 | **P1 — scaffolding** | ✅ Done. Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
 | **P2 — OAuth repositories** | ✅ Done. The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
-| **P3 — the tightenings** | `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
-| **P4 — metadata & keys** | RFC 8414 document, `KeyManager`, JWKS endpoint. **First usable release.** | 1 day |
-| **P5 — identity & bridge** | `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
-| **P6 — clients & polish** | CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example, an end-to-end pass with MCP Inspector and Claude Code, tag `0.1.0`. | 1–1.5 days |
+| **P3 — the tightenings** | ✅ Done. `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
+| **P4 — metadata & keys** | ✅ Done. RFC 8414 document, `KeyManager`, JWKS endpoint, and the `OAuthServer` façade that assembles them. **First usable release.** | 1 day |
+| **P5 — identity & bridge** | ✅ Done. `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
+| **P6 — clients & polish** | ✅ Done. CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example. Remaining before `0.1.0`: an end-to-end pass against MCP Inspector and a real Claude client, which needs a deployed host. | 1–1.5 days |
 
 **≈ 4–7 focused days.** The consuming application works against a `path` repository from P4.
+
+**All six phases are implemented.** What remains before `0.1.0` is a live pass — MCP Inspector and
+a real Claude client against a deployed host — which needs a deployment rather than more code.
 
 ---
 
@@ -345,17 +349,40 @@ commit** — this is credential issuance.
 
 ## 10. Open questions
 
-1. **Key rotation policy** — key lifetime, overlapping keys in JWKS, manual or age-triggered.
-2. **FileDB's O(n) lookup** (§4.5) — accept with a documented ceiling, or a purpose-built
-   token store from the start? Leaning: accept, measure, revisit.
-3. **Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.
-4. **`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
-   the consumer's `2.0.2` pin.
-5. **Legacy-era session store** — `mcp/sdk` treats the 2025 lifecycle as stateful and needs a
+1. ~~**Key rotation policy** — key lifetime, overlapping keys in JWKS, manual or age-triggered.~~
+   **Answered in P4:** manual rotation, RFC 7638 thumbprint as `kid`, and the retired public key
+   published until the last token it signed has expired. See
+   `docs/decisions/0004-key-rotation.md`.
+2. ~~**FileDB's O(n) lookup** (§4.5) — accept with a documented ceiling, or a purpose-built
+   token store from the start? Leaning: accept, measure, revisit.~~
+   **Answered in P5: accept.** Measured at 0.45 ms per 100 records and 5.24 ms per 1 000; a swept
+   deployment holds about 24 records per active client. See
+   `docs/decisions/0005-validation-reads-the-store.md`.
+3. ~~**Who answers DCR** (§4.4) — us or `mcp/sdk`. Exactly one.~~
+   **Answered in P6: us, and off by default.** The SDK's middleware belongs to its OAuth-proxy
+   story and rewrites a metadata document we render ourselves. Client ID Metadata Documents accept
+   an unknown client without an unauthenticated write endpoint, so DCR is opt-in. See
+   `docs/decisions/0006-who-answers-registration.md`.
+4. ~~**`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
+   the consumer's `2.0.2` pin.~~
+   **Answered: `^2.0`,** which is what `composer.json` expresses and what CI resolves. The suite
+   runs against real `UserProvider` and `GroupProvider` directories rather than fakes, so the
+   constraint is tested rather than asserted.
+5. ~~**Legacy-era session store** — `mcp/sdk` treats the 2025 lifecycle as stateful and needs a
    `FileSessionStore`. `SessionStoreFactory` wraps it, but where the directory lives and who
-   sweeps it is a consumer-facing decision.
-6. **Does this package own the `.well-known` routing** or only render the documents? Leaning:
-   render only, and ship the server snippets — routing is deployment, and every host differs.
+   sweeps it is a consumer-facing decision.~~
+   **Answered in P5.** The directory is `<storageDirectory>/mcp_sessions` — under the store that is
+   already required to be outside the web root, rather than the SDK default of `sys_get_temp_dir()`,
+   where a shared host's other tenants can read what is a live credential for its TTL. Sweeping is
+   the deployment's, through `SessionStoreFactory::purge()`, beside `OAuthServer::purgeExpired()` in
+   the same cron entry — `mcp/sdk`'s probabilistic GC is enough for a busy server and nothing for a
+   quiet one.
+6. ~~**Does this package own the `.well-known` routing** or only render the documents? Leaning:
+   render only, and ship the server snippets — routing is deployment, and every host differs.~~
+   **Answered: render only.** `MetadataEndpoint::WELL_KNOWN_PATH` and
+   `McpServer::resourceMetadataPath()` say where each document belongs; `examples/blog` routes them
+   in a `match`, and the README carries the Apache and nginx snippets. Owning the routing would mean
+   owning a rewrite rule for every host, and every host differs.
 
 ---
 

@@ -118,6 +118,36 @@ abstract class FileDbRepository
     }
 
     /**
+     * Write a record, replacing any that already carries the same identifier.
+     *
+     * Distinct from `insert()`, which refuses a duplicate identifier because a duplicate TOKEN
+     * identifier is league's `UniqueTokenIdentifierConstraintViolationException` and a real fault.
+     * A cache entry is the opposite: writing over the previous one is the whole point.
+     *
+     * @param array<string, mixed> $record
+     */
+    protected function upsert(array $record): void
+    {
+        Lock::exclusive(function () use ($record): void {
+            $oauthId = $record[self::FIELD_OAUTH_ID] ?? '';
+
+            if (!is_string($oauthId) || $oauthId === '') {
+                return;
+            }
+
+            $existing = $this->find($oauthId);
+
+            if ($existing === null) {
+                $this->db->create($record);
+
+                return;
+            }
+
+            $this->db->update((string) $existing[FileDB::ATTRIBUTE_ID], $record);
+        });
+    }
+
+    /**
      * Flag a record revoked. A record that is not there is already revoked by definition, so
      * this is a no-op rather than a failure — league revokes optimistically.
      */
@@ -131,6 +161,43 @@ abstract class FileDbRepository
             }
 
             $this->db->update((string) $record[FileDB::ATTRIBUTE_ID], [self::FIELD_REVOKED => true]);
+        });
+    }
+
+    /**
+     * Flag every record whose $field holds $value. Used to end a grant in one step: revoking a
+     * refresh token should take the access token issued alongside it with it, and vice versa.
+     *
+     * The comparison is `hash_equals()` for the same reason `find()`'s is — the value is usually a
+     * token identifier that arrived in a request. See the class docblock and PLAN.md §4.8.
+     *
+     * @return int Number of records newly flagged.
+     */
+    protected function revokeWhere(string $field, string $value): int
+    {
+        if ($value === '') {
+            return 0;
+        }
+
+        return (int) Lock::exclusive(function () use ($field, $value): int {
+            $revoked = 0;
+
+            foreach ($this->db->readAll() as $record) {
+                $candidate = $record[$field] ?? null;
+
+                if (!is_string($candidate) || !hash_equals($candidate, $value)) {
+                    continue;
+                }
+
+                if (($record[self::FIELD_REVOKED] ?? false) === true) {
+                    continue;
+                }
+
+                $this->db->update((string) $record[FileDB::ATTRIBUTE_ID], [self::FIELD_REVOKED => true]);
+                $revoked++;
+            }
+
+            return $revoked;
         });
     }
 

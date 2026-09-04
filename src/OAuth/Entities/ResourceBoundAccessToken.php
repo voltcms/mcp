@@ -38,9 +38,16 @@ final class ResourceBoundAccessToken implements AccessTokenEntityInterface
 
     private ?CryptKeyInterface $privateKey = null;
 
+    /**
+     * @param string|null $keyId The `kid` of the signing key, published in JWKS. Null omits the
+     *                           header, which is correct only while exactly one key is published:
+     *                           a consumer picking a key out of a multi-key JWKS has nothing else
+     *                           to go on.
+     */
     public function __construct(
         private readonly string $issuer,
         private readonly string $resource,
+        private readonly ?string $keyId = null,
     ) {
     }
 
@@ -76,9 +83,14 @@ final class ResourceBoundAccessToken implements AccessTokenEntityInterface
             InMemory::plainText('empty', 'empty'),
         );
 
-        $now = new \DateTimeImmutable();
+        $now     = new \DateTimeImmutable();
+        $builder = $jwt->builder();
 
-        return $jwt->builder()
+        if ($this->keyId !== null) {
+            $builder = $builder->withHeader('kid', $this->keyId);
+        }
+
+        return $builder
             ->issuedBy($this->issuer)
             ->permittedFor($this->resource)
             ->identifiedBy($this->getIdentifier())

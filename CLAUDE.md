@@ -51,14 +51,22 @@ credentials.
 
 ```
 src/
-    McpServer.php  OAuthServer.php  Configuration.php   # façades + explicit config
-    OAuth/         Repositories/ Entities/ Endpoints/ Keys/ Clients/
-    Identity/      UserAccessIdentityProvider, Identity, ScopePolicy
+    McpServer.php  OAuthServer.php                      # the two façades
+    Configuration.php  EndpointUrls.php                 # explicit config; nothing from a header
+    OAuth/
+        Repositories/  Entities/                        # over FileDB
+        Endpoints/     Endpoint (base) + authorize / token / revoke / metadata / register
+        Consent/       ConsentRequest, ConsentTicketSigner
+        Tokens/        AccessTokenVerifier, AccessTokenClaims
+        Keys/          KeyManager, JwksEndpoint
+        Clients/       CIMD document / resolver / fetcher, SsrfGuard, ManualRegistration
+        ResourceIndicator.php                           # RFC 8707 `resource`
+    Identity/      UserAccessIdentityProvider, UserAccessSession, Identity, ScopePolicy
     Bridge/        every call into mcp/sdk lives here
     Contracts/     the seams a consumer varies
-    Http/          Request / Response
+    Http/          Request / Response / PsrAdapter
 tests/                                                  # mirrors src/
-docs/decisions/                                         # ADRs
+docs/decisions/                                         # ADRs — read before changing shape
 examples/blog/                                          # the full flow, end to end
 ```
 
@@ -68,7 +76,9 @@ those before writing a new one.
 
 A consumer implements exactly two interfaces, and neither is about security:
 `ConsentViewInterface` (their markup) and `LoginRedirectorInterface` (their login page).
-Identity is concrete — `UserAccessIdentityProvider` — not an interface a consumer must fill.
+Identity is concrete — `UserAccessIdentityProvider` — not an interface a consumer must fill;
+`SessionInterface` has a concrete `UserAccessSession` too, and is only filled by an application
+whose session is its own.
 
 ## Non-negotiables
 
@@ -104,9 +114,33 @@ any of them away, and do not weaken their tests.**
    too. `FileDbRepository::find()` scans and compares with `hash_equals()` instead. Every
    lookup was already a scan (§4.5), so this costs nothing. (PLAN.md §4.8)
 
+8. **A consent approval is bound to the request it was shown for.** The authorize endpoint
+   completes on a POST, so without a binding any page a logged-in user visits could auto-submit an
+   approval and walk off with an authorization code. `ConsentTicketSigner` HMACs the user, client,
+   redirect URI, granted scopes, code challenge and state; the endpoint recomputes that binding from
+   the request it is handling and compares. There is no session and no store behind it, deliberately
+   — this package has neither. (`docs/decisions/0003-consent-seam.md`)
+9. **Fetching a client metadata document is guarded by address, not by hostname.** A `client_id` is
+   an unauthenticated request parameter and under CIMD it is a URL this server fetches;
+   `metadata.attacker.example` resolving to `169.254.169.254` is the attack, and only inspecting the
+   resolved address catches it. `SsrfGuard` does that, refusals are cached so the endpoint cannot be
+   used as an amplifier, and a document must claim the URL it was served from.
+   (`docs/decisions/0006-who-answers-registration.md`)
+10. **Dynamic client registration is off unless a deployment asks for it.** It is an
+    unauthenticated write endpoint on the credential store, and Client ID Metadata Documents already
+    accept an unknown client without one. `EndpointUrls::below()` names no registration URL by
+    default and `OAuthServer::register()` answers 404.
+
 Items 1, 2 and 7 are *upgrade tripwires*: their tests must fail loudly if a dependency upgrade
 changes behaviour underneath us. A failure there is a security regression to fix, never a test
 to relax.
+
+### The decision records
+
+Six now, and each answers a question PLAN.md left open. 0001 and 0002 are the spikes; 0003 is the
+consent seam; 0004 key rotation; 0005 why validation reads the store (with the measurement);
+0006 who answers registration. **Read the relevant one before changing the shape of what it
+decided** — the reasoning is there precisely so it does not have to be rediscovered.
 
 ## Coding standards
 
