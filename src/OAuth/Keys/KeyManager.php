@@ -104,11 +104,16 @@ final class KeyManager
 
     // --- Reads ---
 
+    /**
+     * league's own permission check is left ON. It notices a key file that is not `0600`-ish, which
+     * is worth hearing about: a signing key another account on a shared host can read is not a
+     * secret, and `writeFile()` below is the only thing keeping it that way.
+     */
     public function privateKey(): CryptKey
     {
         $this->ensureKeyPair();
 
-        return new CryptKey('file://' . $this->configuration->privateKeyPath, null, false);
+        return new CryptKey($this->configuration->privateKeyPath);
     }
 
     public function publicKeyPem(): string
@@ -334,8 +339,13 @@ final class KeyManager
     }
 
     /**
-     * Written to a temporary file and renamed, so a reader never sees a half-written key, and
-     * chmod'd BEFORE the rename, so a private key is never briefly world-readable.
+     * Created exclusively, chmod'd, written, then renamed into place.
+     *
+     * The order is the point. `file_put_contents()` would create the file with whatever the umask
+     * allows and only narrow it afterwards, leaving a window — short, but real, and on a shared
+     * host a window is all a neighbour's cron job needs — in which the private key is readable.
+     * Opening with `x` and setting the mode before a single byte is written closes it. The rename
+     * is what stops a reader ever seeing a half-written key.
      */
     private function writeFile(string $path, string $contents, int $mode): void
     {
@@ -351,14 +361,22 @@ final class KeyManager
         Utils::protectDirectory($directory);
 
         $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
+        $handle    = @fopen($temporary, 'xb');
 
-        if (file_put_contents($temporary, $contents) === false || !chmod($temporary, $mode) || !rename($temporary, $path)) {
+        if ($handle === false) {
+            throw new \RuntimeException('Unable to write the key file.', self::EXCEPTION_DIRECTORY_UNWRITABLE);
+        }
+
+        $written = chmod($temporary, $mode)
+            && fwrite($handle, $contents) === strlen($contents)
+            && fflush($handle);
+
+        fclose($handle);
+
+        if (!$written || !rename($temporary, $path)) {
             @unlink($temporary);
 
-            throw new \RuntimeException(
-                'Unable to write the key file.',
-                self::EXCEPTION_DIRECTORY_UNWRITABLE,
-            );
+            throw new \RuntimeException('Unable to write the key file.', self::EXCEPTION_DIRECTORY_UNWRITABLE);
         }
     }
 

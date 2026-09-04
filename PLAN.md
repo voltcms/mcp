@@ -318,6 +318,9 @@ commit** — this is credential issuance.
 
 **≈ 4–7 focused days.** The consuming application works against a `path` repository from P4.
 
+**All six phases are implemented.** What remains before `0.1.0` is a live pass — MCP Inspector and
+a real Claude client against a deployed host — which needs a deployment rather than more code.
+
 ---
 
 ## 9. Coding standards (the `CLAUDE.md` seed)
@@ -360,13 +363,26 @@ commit** — this is credential issuance.
    story and rewrites a metadata document we render ourselves. Client ID Metadata Documents accept
    an unknown client without an unauthenticated write endpoint, so DCR is opt-in. See
    `docs/decisions/0006-who-answers-registration.md`.
-4. **`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
-   the consumer's `2.0.2` pin.
-5. **Legacy-era session store** — `mcp/sdk` treats the 2025 lifecycle as stateful and needs a
+4. ~~**`voltcms/useraccess` constraint** — `^2.0` and test against it, rather than inheriting
+   the consumer's `2.0.2` pin.~~
+   **Answered: `^2.0`,** which is what `composer.json` expresses and what CI resolves. The suite
+   runs against real `UserProvider` and `GroupProvider` directories rather than fakes, so the
+   constraint is tested rather than asserted.
+5. ~~**Legacy-era session store** — `mcp/sdk` treats the 2025 lifecycle as stateful and needs a
    `FileSessionStore`. `SessionStoreFactory` wraps it, but where the directory lives and who
-   sweeps it is a consumer-facing decision.
-6. **Does this package own the `.well-known` routing** or only render the documents? Leaning:
-   render only, and ship the server snippets — routing is deployment, and every host differs.
+   sweeps it is a consumer-facing decision.~~
+   **Answered in P5.** The directory is `<storageDirectory>/mcp_sessions` — under the store that is
+   already required to be outside the web root, rather than the SDK default of `sys_get_temp_dir()`,
+   where a shared host's other tenants can read what is a live credential for its TTL. Sweeping is
+   the deployment's, through `SessionStoreFactory::purge()`, beside `OAuthServer::purgeExpired()` in
+   the same cron entry — `mcp/sdk`'s probabilistic GC is enough for a busy server and nothing for a
+   quiet one.
+6. ~~**Does this package own the `.well-known` routing** or only render the documents? Leaning:
+   render only, and ship the server snippets — routing is deployment, and every host differs.~~
+   **Answered: render only.** `MetadataEndpoint::WELL_KNOWN_PATH` and
+   `McpServer::resourceMetadataPath()` say where each document belongs; `examples/blog` routes them
+   in a `match`, and the README carries the Apache and nginx snippets. Owning the routing would mean
+   owning a rewrite rule for every host, and every host differs.
 
 ---
 

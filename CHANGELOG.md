@@ -155,5 +155,15 @@ changes are permitted in `0.x` and are recorded here.
   client is final.
 - Dynamic client registration is opt-in, and nothing advertises a registration endpoint that is not
   configured.
+- `ScopeRepository::finalizeScopes()` now applies the scope policy, which closes the gap its own
+  docblock flagged in P2. The authorize endpoint narrows before consent and so covers the
+  authorization-code flow; the refresh flow has no consent screen, so a user demoted after
+  consenting would otherwise have kept their old scopes for as long as they kept refreshing. A
+  refresh by an account that is gone, or that grants none of the token's scopes, is now
+  `invalid_grant`.
+- Key files are created with `fopen(..., 'x')` and `chmod`'d before a byte is written, rather than
+  written and narrowed afterwards. The old order left a window — short, and on a shared host long
+  enough — in which the private key was readable. league's own key-permission check is left enabled
+  as a second pair of eyes.
 
 [Unreleased]: https://github.com/voltcms/mcp/commits/main

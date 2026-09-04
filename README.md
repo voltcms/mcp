@@ -8,12 +8,16 @@ package lets one speak the Model Context Protocol to a remote client — a Claud
 ChatGPT session, Claude Code — with a real OAuth 2.1 authorization server backed by nothing
 but files on disk.
 
-> ### Status: pre-release, under construction
+> ### Status: pre-release, feature-complete
 >
-> The plan and both spike-backed decision records are complete; the implementation is being
-> built out phase by phase (see [`PLAN.md`](PLAN.md) §8). **Nothing here is released yet, and
-> the API shown below is the intended shape, not a shipped one.** Do not put this in front of
-> real credentials until `0.1.0` is tagged.
+> All six delivery phases are implemented and tested (see [`PLAN.md`](PLAN.md) §8): the OAuth
+> repositories, the S256 and RFC 8707 tightenings, the authorize, token, revoke, metadata, JWKS and
+> registration endpoints, signing-key management and rotation, identity and scope policy, the bridge
+> into `mcp/sdk`, and Client ID Metadata Documents. 435 tests run on PHP 8.2, 8.3 and 8.4.
+>
+> **No version is tagged yet.** What is left before `0.1.0` is a live pass — MCP Inspector and a
+> real Claude client against a deployed host — not more code. Until then, treat this as unreviewed
+> and do not point it at production credentials.
 
 ---
 
@@ -60,8 +64,6 @@ composer require nyholm/psr7 nyholm/psr7-server
 ```
 
 ## A worked example
-
-*(Intended API — see the status note above.)*
 
 Configuration is explicit on purpose. The issuer URL is never derived from `$_SERVER`, because
 `Host` is attacker-controlled and a forged one would publish an attacker's origin as your

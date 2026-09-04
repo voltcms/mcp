@@ -100,7 +100,7 @@ final class OAuthServer
         $this->server = new AuthorizationServer(
             $this->clientRepository,
             $this->accessTokenRepository,
-            new ScopeRepository($configuration),
+            new ScopeRepository($configuration, $identities, $scopePolicy),
             $this->keyManager->privateKey(),
             $configuration->encryptionKey,
         );

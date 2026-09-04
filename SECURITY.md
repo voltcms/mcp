@@ -3,8 +3,9 @@
 `voltcms/mcp` issues credentials. This document states what it guarantees, what it does *not*,
 and how to report a problem.
 
-> **Pre-release.** No version has been tagged yet. Until `0.1.0`, treat this package as
-> unreviewed and do not point it at production credentials.
+> **Pre-release.** The implementation is complete and tested, but no version has been tagged and
+> no independent review has happened. Until `0.1.0`, treat this package as unreviewed and do not
+> point it at production credentials.
 
 ## Reporting a vulnerability
 
