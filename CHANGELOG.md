@@ -108,9 +108,29 @@ changes are permitted in `0.x` and are recorded here.
 - `FileDbRepository::upsert()`, for caches, where writing over the previous entry is the point.
 - `examples/blog/`: the whole flow — three tools, a consent page, a login page, one front
   controller, a cron entry and a registration script.
+- `OAuth\WellKnownPath`: where a metadata document belongs, given the identifier it describes.
+  RFC 8414 §3.1 and RFC 9728 §3.1 insert the well-known segment between the host and the path, so a
+  resource of `https://example.com/mcp` publishes at
+  `/.well-known/oauth-protected-resource/mcp` — not the bare path, which is all this server served
+  before. A conforming client got a 404 at the first hop of discovery.
+- `McpServer::resourceMetadataPaths()` and `OAuthServer::metadataPaths()`: the façades say where
+  their documents belong, so a front controller asks rather than hard-coding a constant that is only
+  right for a path-less identifier.
+- `MetadataEndpoint::paths()`, and `Bridge\ProtectedResourceMetadata::pathsFor()`.
+- `docs/release-checklist.md`: the runbook for the live pass before `0.1.0`.
+- `examples/blog/bin/create-user.php` and `examples/blog/dev-router.php`, because the example's own
+  README told you to do two things you could not: create an account with tooling `voltcms/useraccess`
+  does not ship, and run it under a built-in server that routes neither `/.well-known/…` nor
+  `/oauth/…`.
 
 ### Changed
 
+- The RFC 8414 and RFC 9728 metadata documents are now served at the path-inserted URLs their specs
+  name, with the bare well-known path kept as a fallback. `McpServer::resourceMetadataPath()` returns
+  the inserted URL, which is also what the `WWW-Authenticate` challenge advertises — a consumer
+  routing that document from a hard-coded constant must switch to `resourceMetadataPaths()`.
+- The example reads `MCP_ISSUER`, `MCP_RESOURCE` and `MCP_STORAGE` from the environment instead of
+  having them edited into `bootstrap.php`.
 - `EndpointUrls::below()` no longer gives registration a URL unless asked. A server that has not
   opted in leaves `Configuration::$registrationEndpoint` null, does not advertise
   `registration_endpoint` in its RFC 8414 metadata, and answers `OAuthServer::register()` with 404.

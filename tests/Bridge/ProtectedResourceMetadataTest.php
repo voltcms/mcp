@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VoltCMS\MCP\Tests\Bridge;
 
 use VoltCMS\MCP\Bridge\ProtectedResourceMetadata;
+use VoltCMS\MCP\Configuration;
 use VoltCMS\MCP\Tests\Support\RepositoryTestCase;
 
 /**
@@ -44,10 +45,60 @@ final class ProtectedResourceMetadataTest extends RepositoryTestCase
         $this->assertSame('Example Blog', $document['resource_name']);
     }
 
-    public function testServesTheDocumentAtTheWellKnownPathTheSdkExpects(): void
+    // --- Where the document is served (RFC 9728 §3.1) ---
+
+    /**
+     * The configured resource is `https://example.com/mcp`, so the document belongs at the URL with
+     * that path INSERTED. Serving only the bare well-known path 404s a conforming client at the
+     * first hop of discovery — which is what this server did before `WellKnownPath` existed.
+     */
+    public function testServesTheDocumentAtThePathInsertedUrl(): void
     {
         $metadata = ProtectedResourceMetadata::forConfiguration($this->configuration);
 
-        $this->assertSame('/.well-known/oauth-protected-resource', $metadata->getPrimaryMetadataPath());
+        $this->assertSame('/.well-known/oauth-protected-resource/mcp', $metadata->getPrimaryMetadataPath());
+    }
+
+    public function testKeepsTheBareWellKnownPathAsAFallback(): void
+    {
+        $metadata = ProtectedResourceMetadata::forConfiguration($this->configuration);
+
+        $this->assertSame(
+            ['/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-protected-resource'],
+            $metadata->getMetadataPaths(),
+        );
+    }
+
+    public function testAResourceWithNoPathIsServedAtTheBarePathAlone(): void
+    {
+        $configuration = $this->configurationFor('https://example.com', 'https://example.com');
+
+        $this->assertSame(
+            ['/.well-known/oauth-protected-resource'],
+            ProtectedResourceMetadata::forConfiguration($configuration)->getMetadataPaths(),
+        );
+    }
+
+    public function testAResourceWithANestedPathInsertsTheWholePath(): void
+    {
+        $configuration = $this->configurationFor('https://example.com', 'https://example.com/api/mcp');
+
+        $this->assertSame(
+            '/.well-known/oauth-protected-resource/api/mcp',
+            ProtectedResourceMetadata::forConfiguration($configuration)->getPrimaryMetadataPath(),
+        );
+    }
+
+    private function configurationFor(string $issuer, string $resource): Configuration
+    {
+        return new Configuration(
+            issuer:           $issuer,
+            resource:         $resource,
+            storageDirectory: $this->configuration->storageDirectory,
+            privateKeyPath:   $this->configuration->privateKeyPath,
+            publicKeyPath:    $this->configuration->publicKeyPath,
+            encryptionKey:    $this->configuration->encryptionKey,
+            scopes:           $this->configuration->scopes,
+        );
     }
 }

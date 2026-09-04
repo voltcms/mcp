@@ -9,16 +9,15 @@ That is what this document is for. It is a runbook: work top to bottom, and each
 run, what a good result looks like, and what to do when it is not.
 
 > **Every command below has been run.** The outputs shown are real, captured against
-> `examples/blog` on PHP 8.4. Where a step is expected to *fail* as things stand, it says so and
-> says why.
+> `examples/blog` on PHP 8.4.
 
-**Time:** about two hours for steps 0–5 if nothing surprises you. Step 6 needs an hour of waiting.
+**Time:** about two hours for steps 1–5 if nothing surprises you. Step 6 needs an hour of waiting.
 
 **Contents**
 
 | | |
 |---|---|
-| [Step 0](#step-0--fix-the-one-thing-we-already-know-is-wrong) | The RFC 9728 path, before you deploy anything |
+| [Step 0](#step-0--confirm-the-metadata-paths-done-in-code) | The RFC 9728 path — already fixed; here for the why |
 | [Step 1](#step-1--stand-up-a-reachable-host) | A host, a certificate, a store, a user |
 | [Step 2](#step-2--walk-the-discovery-chain-by-hand) | Five `curl`s, before any client |
 | [Step 3](#step-3--decide-how-the-client-gets-a-client_id) | CIMD, pre-registration, or DCR |
@@ -31,79 +30,53 @@ run, what a good result looks like, and what to do when it is not.
 
 ---
 
-## Step 0 — fix the one thing we already know is wrong
+## Step 0 — confirm the metadata paths (done in code)
 
-**Do this before deploying.** It needs no host, and it is the most likely first failure.
+**Nothing to do here.** This step exists because writing this runbook found a real gap, and it is
+worth knowing what it was — the symptom is one you could otherwise spend an afternoon on.
 
-### What is wrong
+### What was wrong
 
-RFC 9728 §3 says a protected resource publishes its metadata at a URL formed by inserting
-`/.well-known/oauth-protected-resource` **between the host and the resource's path**:
+RFC 8414 §3.1 and RFC 9728 §3.1 both say the well-known segment goes **between the host and the
+path** of the identifier, not after it:
 
-| Resource identifier | Metadata URL the client asks for |
+| Resource identifier | Metadata URL a conforming client asks for |
 |---|---|
 | `https://example.com/mcp` | `https://example.com/.well-known/oauth-protected-resource/mcp` |
 | `https://example.com` | `https://example.com/.well-known/oauth-protected-resource` |
 
-`Bridge\ProtectedResourceMetadata::forConfiguration()` does not pass `metadataPaths`, so the SDK
-falls back to its default of the bare path only. Reproduced against a running server:
+`Bridge\ProtectedResourceMetadata` passed no `metadataPaths`, so the SDK fell back to the bare path
+only — and this package's resource is an MCP endpoint, which almost always has one. Reproduced
+against a running server before the fix:
 
 ```console
 $ curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8080/.well-known/oauth-protected-resource/mcp
 404
-$ curl -sS http://localhost:8080/.well-known/oauth-protected-resource
-{"authorization_servers":["http://localhost:8080"],"scopes_supported":["mcp:read","mcp:write"],…}
 ```
 
-A client that follows the RFC asks for the first URL, gets a 404, and stops. It never reaches the
-authorization server at all.
+The failure is nasty because of *where* it lands: at the first hop of discovery, before this server
+has said anything about itself. The client has nothing to report but "could not connect".
 
-RFC 8414 §3.1 has the same rule for an **issuer with a path** — issuer `https://example.com/blog`
-means AS metadata at `/.well-known/oauth-authorization-server/blog`. `MetadataEndpoint::WELL_KNOWN_PATH`
-is a bare constant, so it is correct only for a path-less issuer. If you deploy at the root of a
-domain this second one costs you nothing; if you deploy under a path it will bite.
+### What was changed
 
-### What to change
+- **`src/OAuth/WellKnownPath.php`** — new. The insertion rule, once, because both RFCs define it
+  identically. Returns the inserted path first (that is what the `WWW-Authenticate` challenge
+  publishes) and keeps the bare path as a fallback for clients that do not insert.
+- **`Bridge\ProtectedResourceMetadata`** — computes `metadataPaths` from the resource.
+- **`MetadataEndpoint::paths()`** — the same for RFC 8414, from the issuer. Matters when the issuer
+  has a path of its own (`https://example.com/blog`).
+- **`McpServer::resourceMetadataPaths()`, `OAuthServer::metadataPaths()`** — the façades say where
+  their documents belong, so a front controller asks instead of hard-coding.
+- **`examples/blog/public/mcp.php`** — routes against those lists.
 
-1. **`src/Bridge/ProtectedResourceMetadata.php`** — compute the paths from the resource URL and pass
-   both to the SDK, path-inserted first (it becomes `getPrimaryMetadataPath()`, which is what the
-   `WWW-Authenticate` challenge advertises):
+Covered by `WellKnownPathTest`, and by assertions in the metadata, `McpServer` and `OAuthServer`
+tests — including one that checks the URL in the challenge is actually one of the routed paths,
+which is the pairing that broke.
 
-   ```php
-   $path  = (string) parse_url($configuration->resource, PHP_URL_PATH);
-   $paths = $path === '' || $path === '/'
-       ? [SdkProtectedResourceMetadata::DEFAULT_METADATA_PATH]
-       : [SdkProtectedResourceMetadata::DEFAULT_METADATA_PATH . '/' . trim($path, '/'),
-          SdkProtectedResourceMetadata::DEFAULT_METADATA_PATH];
-   ```
+### What you verify
 
-   Keeping the bare path as a fallback costs one array entry and accommodates clients that only ask
-   for it.
-
-2. **`src/McpServer.php`** — add `resourceMetadataPaths(): array` returning
-   `$this->resourceMetadata->getMetadataPaths()`. Keep `resourceMetadataPath()` for the primary.
-
-3. **`src/OAuth/Endpoints/MetadataEndpoint.php`** — add a
-   `wellKnownPathFor(Configuration $configuration): string` that path-inserts the issuer's path, and
-   keep `WELL_KNOWN_PATH` as the constant for the common case.
-
-4. **`examples/blog/public/mcp.php`** — the `match` matches one path per document; it needs to match
-   any of the set. Replace those two arms with a check against `in_array($path, …, true)`.
-
-### How to know it worked
-
-Add to `tests/Bridge/ProtectedResourceMetadataTest.php`:
-
-- a resource with a path publishes the path-inserted URL as its **primary** path;
-- a resource without one publishes only the bare path;
-- the bare path is still in the list either way.
-
-Then re-run [Appendix B](#appendix-b--running-the-example-locally) and confirm the `curl` at the top
-of this step returns `200` instead of `404`.
-
-- [ ] Path-inserted metadata paths implemented, tested, suite green
-
----
+Nothing extra: [step 2.1](#21-protected-resource-metadata) is the check, and it now returns `200`.
+If it ever returns `404` again, this is why.
 
 ## Step 1 — stand up a reachable host
 
@@ -229,7 +202,9 @@ curl -sS $B/.well-known/oauth-protected-resource/mcp
 {"authorization_servers":["https://mcp.example.com"],"scopes_supported":["mcp:read","mcp:write"],"resource":"https://mcp.example.com/mcp"}
 ```
 
-- **404** → step 0 is not done, or `.well-known` is not routed to PHP.
+- **404** → `.well-known` is not routed to PHP (step 1.3). If the bare path works and only this
+  one 404s, the path-insertion of [step 0](#step-0--confirm-the-metadata-paths-done-in-code) has
+  regressed — `WellKnownPathTest` should have caught it.
 - **`authorization_servers` is not your issuer** → `MCP_ISSUER` is wrong or not reaching PHP.
 
 ### 2.2 The challenge on an unauthenticated request
@@ -557,7 +532,7 @@ per endpoint and per peer.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Client: "could not connect", nothing in the logs | `.well-known` not routed to PHP | Step 1.3; verify with 2.1 |
-| `/.well-known/oauth-protected-resource/mcp` → 404 | Step 0 not done | Step 0 |
+| `/.well-known/oauth-protected-resource/mcp` → 404 | Path-insertion regressed, or `.well-known` unrouted | [Step 0](#step-0--confirm-the-metadata-paths-done-in-code), then step 1.3 |
 | `403 Forbidden` on `/mcp` | `DnsRebindingProtectionMiddleware` refused the `Host` | `MCP_RESOURCE` host must match the `Host` the client sends |
 | `invalid_request`, hint names `code_challenge_method` | Client sent `plain` or omitted it | Not fixable here by design — §4.1. The client must send `S256` |
 | `invalid_target` | `resource` parameter ≠ `MCP_RESOURCE` | Compare exactly, including trailing slash |

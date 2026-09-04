@@ -102,6 +102,37 @@ final class MetadataEndpointTest extends RepositoryTestCase
         $this->assertSame('public, max-age=3600', $response->header('Cache-Control'));
     }
 
+    // --- Where the document is served (RFC 8414 §3.1) ---
+
+    public function testAnIssuerAtAnOriginRootIsServedAtTheBarePathAlone(): void
+    {
+        $this->assertSame([MetadataEndpoint::WELL_KNOWN_PATH], $this->endpoint()->paths());
+    }
+
+    /**
+     * RFC 8414 §3.1 inserts the issuer's path after the well-known segment, so an issuer of
+     * `https://example.com/blog` publishes at `/.well-known/oauth-authorization-server/blog`. A
+     * server that only answered the bare path would be undiscoverable when deployed under a path.
+     */
+    public function testAnIssuerWithAPathIsServedAtThePathInsertedUrlFirst(): void
+    {
+        $endpoint = new MetadataEndpoint($this->configurationUnder('https://example.com/blog'), new PsrAdapter());
+
+        $this->assertSame(
+            ['/.well-known/oauth-authorization-server/blog', '/.well-known/oauth-authorization-server'],
+            $endpoint->paths(),
+        );
+    }
+
+    public function testAnIssuerWithAPathStillPublishesItselfAsTheIssuer(): void
+    {
+        $endpoint = new MetadataEndpoint($this->configurationUnder('https://example.com/blog'), new PsrAdapter());
+        $document = $endpoint->handle($this->get())->decodedBody();
+
+        $this->assertSame('https://example.com/blog', $document['issuer'] ?? null);
+        $this->assertSame('https://example.com/blog/oauth/token', $document['token_endpoint'] ?? null);
+    }
+
     public function testAPostIsRefusedWithTheAllowedMethod(): void
     {
         $response = $this->endpoint()->handle(new Request('POST', MetadataEndpoint::WELL_KNOWN_PATH));
@@ -115,6 +146,19 @@ final class MetadataEndpointTest extends RepositoryTestCase
     private function endpoint(): MetadataEndpoint
     {
         return new MetadataEndpoint($this->configuration, new PsrAdapter());
+    }
+
+    private function configurationUnder(string $issuer): Configuration
+    {
+        return new Configuration(
+            issuer:           $issuer,
+            resource:         $issuer . '/mcp',
+            storageDirectory: $this->configuration->storageDirectory,
+            privateKeyPath:   $this->configuration->privateKeyPath,
+            publicKeyPath:    $this->configuration->publicKeyPath,
+            encryptionKey:    $this->configuration->encryptionKey,
+            scopes:           $this->configuration->scopes,
+        );
     }
 
     private function get(): Request

@@ -74,6 +74,16 @@ final class OAuthServerTest extends RepositoryTestCase
         $this->assertSame($this->configuration->tokenEndpoint, $document['token_endpoint']);
     }
 
+    /**
+     * The façade has to say where its documents belong, because RFC 8414 derives that from the
+     * issuer — which is configuration. A front controller that hard-codes the path is wrong for any
+     * deployment under a path.
+     */
+    public function testSaysWhereItsMetadataDocumentBelongs(): void
+    {
+        $this->assertSame([MetadataEndpoint::WELL_KNOWN_PATH], $this->oauth->metadataPaths());
+    }
+
     public function testPublishesAJwksContainingTheKeyItSignsWith(): void
     {
         $document = $this->oauth->jwks(new Request('GET', '/oauth/jwks'))->decodedBody();

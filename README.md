@@ -15,10 +15,10 @@ but files on disk.
 > registration endpoints, signing-key management and rotation, identity and scope policy, the bridge
 > into `mcp/sdk`, and Client ID Metadata Documents. 435 tests run on PHP 8.2, 8.3 and 8.4.
 >
-> **No version is tagged yet.** What is left before `0.1.0` is mostly a live pass — MCP Inspector
-> and a real Claude client against a deployed host — plus one known spec gap found while writing it
-> up. Both are in [`docs/release-checklist.md`](docs/release-checklist.md). Until then, treat this as
-> unreviewed and do not point it at production credentials.
+> **No version is tagged yet.** What is left before `0.1.0` is a live pass — MCP Inspector and a
+> real Claude client against a deployed host — written out step by step in
+> [`docs/release-checklist.md`](docs/release-checklist.md). Until then, treat this as unreviewed and
+> do not point it at production credentials.
 
 ---
 

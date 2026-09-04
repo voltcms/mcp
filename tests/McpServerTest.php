@@ -45,7 +45,7 @@ final class McpServerTest extends EndpointTestCase
         $response = $this->mcp()->handle($this->initialize());
 
         $this->assertStringContainsString(
-            'resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+            'resource_metadata="https://example.com/.well-known/oauth-protected-resource/mcp"',
             (string) $response->header('WWW-Authenticate'),
         );
     }
@@ -144,9 +144,41 @@ final class McpServerTest extends EndpointTestCase
         $this->assertSame('https://example.com/mcp', $document['resource'] ?? null);
     }
 
+    /**
+     * RFC 9728 §3.1: the resource's path is inserted after the well-known segment. This is the URL
+     * the challenge advertises, so it is the one a conforming client fetches first — and the one
+     * that used to 404.
+     */
     public function testTheResourceMetadataPathIsTheOneInTheChallenge(): void
     {
-        $this->assertSame('/.well-known/oauth-protected-resource', $this->mcp()->resourceMetadataPath());
+        $this->assertSame('/.well-known/oauth-protected-resource/mcp', $this->mcp()->resourceMetadataPath());
+    }
+
+    public function testTheDocumentIsAlsoOfferedAtTheBareWellKnownPath(): void
+    {
+        $this->assertSame([
+            '/.well-known/oauth-protected-resource/mcp',
+            '/.well-known/oauth-protected-resource',
+        ], $this->mcp()->resourceMetadataPaths());
+    }
+
+    /**
+     * The challenge is only useful if what it points at is actually routed. This is the pairing the
+     * front controller has to get right, asserted here so a change to either side breaks a test
+     * rather than a client.
+     */
+    public function testTheChallengeUrlIsOneOfTheRoutedPaths(): void
+    {
+        $mcp      = $this->mcp();
+        $response = $mcp->handle($this->initialize());
+
+        $challenge = (string) $response->header('WWW-Authenticate');
+        $advertised = (string) parse_url(
+            (string) preg_replace('/^.*resource_metadata="([^"]+)".*$/s', '$1', $challenge),
+            PHP_URL_PATH,
+        );
+
+        $this->assertContains($advertised, $mcp->resourceMetadataPaths());
     }
 
     public function testNothingIsWrittenToTheOutputBuffer(): void

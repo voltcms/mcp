@@ -117,10 +117,24 @@ final class McpServer
         );
     }
 
-    /** Where the RFC 9728 document must be served from. */
+    /**
+     * The path the RFC 9728 document must be served from, and the one the `WWW-Authenticate`
+     * challenge advertises. For a resource with a path this is the RFC 9728 §3.1 inserted URL.
+     */
     public function resourceMetadataPath(): string
     {
         return $this->resourceMetadata->getPrimaryMetadataPath();
+    }
+
+    /**
+     * Every path the document should answer at, most conformant first. Route all of them: the extra
+     * entry is the bare well-known path, kept for clients that do not insert (see `WellKnownPath`).
+     *
+     * @return list<string>
+     */
+    public function resourceMetadataPaths(): array
+    {
+        return $this->resourceMetadata->getMetadataPaths();
     }
 
     public function tokenValidator(): McpTokenValidator

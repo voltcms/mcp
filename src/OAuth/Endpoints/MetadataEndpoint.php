@@ -8,6 +8,7 @@ use VoltCMS\MCP\Configuration;
 use VoltCMS\MCP\Http\PsrAdapter;
 use VoltCMS\MCP\Http\Request;
 use VoltCMS\MCP\Http\Response;
+use VoltCMS\MCP\OAuth\WellKnownPath;
 
 /**
  * RFC 8414 authorization server metadata — the document a client fetches from
@@ -30,7 +31,11 @@ use VoltCMS\MCP\Http\Response;
  */
 final class MetadataEndpoint extends Endpoint
 {
-    /** Where RFC 8414 §3 says this document lives. Routing it is the deployment's job. */
+    /**
+     * The well-known segment RFC 8414 §3 names, and the whole path for an issuer that has none of
+     * its own. An issuer WITH a path needs that path inserted after this — use `paths()`, which
+     * handles both. Routing whatever it returns is the deployment's job.
+     */
     public const WELL_KNOWN_PATH = '/.well-known/oauth-authorization-server';
 
     public const CACHE_SECONDS = 3600;
@@ -40,6 +45,17 @@ final class MetadataEndpoint extends Endpoint
     public function __construct(Configuration $configuration, PsrAdapter $psr)
     {
         parent::__construct($configuration, $psr);
+    }
+
+    /**
+     * Every path this document should be served at, most conformant first. For the common case of
+     * an issuer at an origin's root that is `WELL_KNOWN_PATH` alone.
+     *
+     * @return list<string>
+     */
+    public function paths(): array
+    {
+        return WellKnownPath::forIdentifier(self::WELL_KNOWN_PATH, $this->configuration->issuer);
     }
 
     public function handle(Request $request): Response

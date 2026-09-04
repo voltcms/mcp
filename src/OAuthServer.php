@@ -50,14 +50,17 @@ use VoltCMS\UserAccess\LoginThrottle;
  * ```php
  * $oauth = new OAuthServer($configuration, $identities, $scopePolicy, $consentView, $login);
  *
- * match ($path) {
- *     '/oauth/authorize' => $oauth->authorize($request),
- *     '/oauth/token'     => $oauth->token($request),
- *     '/oauth/revoke'    => $oauth->revoke($request),
- *     '/oauth/jwks'      => $oauth->jwks($request),
- *     MetadataEndpoint::WELL_KNOWN_PATH => $oauth->metadata($request),
+ * match (true) {
+ *     $path === '/oauth/authorize'                   => $oauth->authorize($request),
+ *     $path === '/oauth/token'                       => $oauth->token($request),
+ *     $path === '/oauth/revoke'                      => $oauth->revoke($request),
+ *     $path === '/oauth/jwks'                        => $oauth->jwks($request),
+ *     in_array($path, $oauth->metadataPaths(), true) => $oauth->metadata($request),
  * };
  * ```
+ *
+ * The metadata document is matched against a LIST rather than a constant because RFC 8414 puts it
+ * at a URL derived from the issuer, which is configuration — see `WellKnownPath`.
  */
 final class OAuthServer
 {
@@ -172,10 +175,21 @@ final class OAuthServer
         return $this->revokeEndpoint->handle($request);
     }
 
-    /** RFC 8414, served at `MetadataEndpoint::WELL_KNOWN_PATH`. */
+    /** RFC 8414, served at every path `metadataPaths()` names. */
     public function metadata(Request $request): Response
     {
         return $this->metadataEndpoint->handle($request);
+    }
+
+    /**
+     * Every path the RFC 8414 document should answer at, most conformant first. For an issuer at an
+     * origin's root that is one path; for an issuer with a path of its own, the inserted URL leads.
+     *
+     * @return list<string>
+     */
+    public function metadataPaths(): array
+    {
+        return $this->metadataEndpoint->paths();
     }
 
     public function jwks(Request $request): Response
