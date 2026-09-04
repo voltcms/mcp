@@ -6,6 +6,7 @@ namespace VoltCMS\MCP\Tests;
 
 use PHPUnit\Framework\TestCase;
 use VoltCMS\MCP\Configuration;
+use VoltCMS\MCP\EndpointUrls;
 
 /**
  * Configuration is the package's guard against a header-derived issuer or audience (PLAN.md
@@ -14,6 +15,63 @@ use VoltCMS\MCP\Configuration;
 final class ConfigurationTest extends TestCase
 {
     private const KEY = 'PsUqBQ0YBaNlfyE8dLUt9dK4rMPVLQhZ8OrZfEXvOBs=';
+
+    // --- Endpoint URLs ---
+
+    public function testDerivesTheEndpointUrlsFromTheIssuerByDefault(): void
+    {
+        $config = $this->configuration();
+
+        $this->assertSame('https://example.com/oauth/authorize', $config->authorizationEndpoint);
+        $this->assertSame('https://example.com/oauth/token', $config->tokenEndpoint);
+        $this->assertSame('https://example.com/oauth/revoke', $config->revocationEndpoint);
+        $this->assertSame('https://example.com/oauth/jwks', $config->jwksUri);
+        $this->assertSame('https://example.com/oauth/register', $config->registrationEndpoint);
+    }
+
+    public function testDerivedEndpointUrlsFollowTheIssuersPath(): void
+    {
+        $config = $this->configuration(issuer: 'https://example.com/blog');
+
+        $this->assertSame('https://example.com/blog/oauth/authorize', $config->authorizationEndpoint);
+    }
+
+    public function testAcceptsExplicitEndpointUrls(): void
+    {
+        $config = $this->configuration(endpoints: new EndpointUrls(
+            'https://example.com/auth',
+            'https://example.com/tok',
+            'https://example.com/rev',
+            'https://example.com/keys',
+        ));
+
+        $this->assertSame('https://example.com/auth', $config->authorizationEndpoint);
+        $this->assertNull($config->registrationEndpoint);
+    }
+
+    public function testRefusesAnEndpointUrlThatIsNotHttps(): void
+    {
+        $this->expectExceptionCode(Configuration::EXCEPTION_ENDPOINT_INSECURE);
+
+        $this->configuration(endpoints: new EndpointUrls(
+            'http://example.com/auth',
+            'https://example.com/tok',
+            'https://example.com/rev',
+            'https://example.com/keys',
+        ));
+    }
+
+    public function testRefusesARelativeEndpointUrl(): void
+    {
+        $this->expectExceptionCode(Configuration::EXCEPTION_ENDPOINT_MALFORMED);
+
+        $this->configuration(endpoints: new EndpointUrls(
+            '/oauth/authorize',
+            'https://example.com/tok',
+            'https://example.com/rev',
+            'https://example.com/keys',
+        ));
+    }
 
     // --- Accepted configurations ---
 
@@ -241,6 +299,7 @@ final class ConfigurationTest extends TestCase
         string $encryptionKey = self::KEY,
         array $scopes = ['mcp:read', 'mcp:write'],
         ?\DateInterval $accessTokenTtl = null,
+        ?EndpointUrls $endpoints = null,
     ): Configuration {
         return new Configuration(
             issuer:           $issuer,
@@ -251,6 +310,7 @@ final class ConfigurationTest extends TestCase
             encryptionKey:    $encryptionKey,
             scopes:           $scopes,
             accessTokenTtl:   $accessTokenTtl,
+            endpoints:        $endpoints,
         );
     }
 }

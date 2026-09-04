@@ -58,8 +58,8 @@ repositories plus two security tightenings that are easy to get wrong. This pack
 | Composer package | `voltcms/mcp` |
 | Namespace | `VoltCMS\MCP\` |
 | PHP | `^8.2` |
-| Requires | `mcp/sdk` (pinned `0.8.*`), `league/oauth2-server ^9.4`, `voltcms/useraccess`, `ext-json`, `ext-openssl` |
-| Suggests | a PSR-17 implementation (`nyholm/psr7` recommended) |
+| Requires | `mcp/sdk` (pinned `0.8.*`), `league/oauth2-server ^9.4`, `voltcms/useraccess`, `lcobucci/jwt`, `php-http/discovery`, `psr/http-factory`, `psr/http-message`, `ext-json`, `ext-openssl` |
+| Suggests | a PSR-17 implementation (`nyholm/psr7` recommended) — discovered at runtime, and needed by `mcp/sdk`'s HTTP transport anyway |
 | License | MIT |
 | Versioning | Semver from `0.1.0`; breaking changes allowed in `0.x` and recorded in `CHANGELOG.md` |
 
@@ -310,7 +310,7 @@ commit** — this is credential issuance.
 | **P0 — spikes** | ✅ Done — decisions 0001 and 0002. | — |
 | **P1 — scaffolding** | ✅ Done. Repo, composer, PHPUnit, CI, license, README skeleton, both decision records. | 0.5 day |
 | **P2 — OAuth repositories** | ✅ Done. The five repositories and six entities over `FileDB`, with `Lock` around mutations. The spike's 180 lines, made production-shaped and tested. | 1 day |
-| **P3 — the tightenings** | `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
+| **P3 — the tightenings** | ✅ Done. `AuthorizeEndpoint` with the S256-only guard and the consent seam; `ResourceBoundAccessToken`; `TokenEndpoint`; `RevokeEndpoint`. Both tripwire tests. | 1–1.5 days |
 | **P4 — metadata & keys** | RFC 8414 document, `KeyManager`, JWKS endpoint. **First usable release.** | 1 day |
 | **P5 — identity & bridge** | `UserAccessIdentityProvider`, `ScopePolicy`, `McpTokenValidator`, `ProtectedResourceMetadata`, `SessionStoreFactory`, `McpServer` façade. | 1 day |
 | **P6 — clients & polish** | CIMD with its SSRF guards, manual registration, the DCR question (§4.4), the example, an end-to-end pass with MCP Inspector and Claude Code, tag `0.1.0`. | 1–1.5 days |

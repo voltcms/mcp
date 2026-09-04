@@ -33,11 +33,49 @@ changes are permitted in `0.x` and are recorded here.
   revoked, duplicate identifiers refused, optional `AuditLog` records for every issuance and
   revocation, and `purgeExpired()` for deployments that want to sweep.
 - Client secrets are stored only as hashes, and only for confidential clients.
+- `Http\Request` and `Http\Response`: the value objects every handler takes and returns.
+  `Request::fromGlobals()` is the whole integration for an application with no HTTP abstraction;
+  `fromPsr7()` and `Response::toPsr7()` are there for one that has. The request deliberately
+  carries no host — `$_SERVER['HTTP_HOST']` is attacker-controlled — and `Http\PsrAdapter` is the
+  one place PSR-7 objects are built, for league's benefit.
+- `Contracts\ConsentViewInterface` and `Contracts\LoginRedirectorInterface`: the two interfaces a
+  consuming application implements. Neither is about security.
+- `Contracts\IdentityProviderInterface` and `Contracts\ScopePolicyInterface`, with the
+  `Identity\Identity` value object they speak in. The useraccess-backed implementations land in P5.
+- `OAuth\Endpoints\AuthorizeEndpoint`: the S256-only guard, the login seam and the consent seam.
+- `OAuth\Endpoints\TokenEndpoint` and `OAuth\Endpoints\RevokeEndpoint` (RFC 7009), over the
+  shared `OAuth\Endpoints\Endpoint` base, which owns failure rendering and throttling.
+- `OAuth\Consent\ConsentRequest` and `OAuth\Consent\ConsentTicketSigner`: the consent screen's
+  input, and the signed ticket that binds an approval to the request it was shown for. See
+  `docs/decisions/0003-consent-seam.md`.
+- `OAuth\ResourceIndicator`: the RFC 8707 `resource` parameter, refused unless it names this
+  server.
+- `OAuth\Tokens\AccessTokenVerifier` and `OAuth\Tokens\AccessTokenClaims`: a bearer string
+  turned back into claims, or into nothing. Accepts several public keys so a key rotation does not
+  invalidate every live token at once.
+- `EndpointUrls`, and the five endpoint URLs `Configuration` now exposes. They default to
+  `<issuer>/oauth/…` and are validated by the same rules as the issuer.
+- `RefreshTokenRepository::revokeForAccessToken()` and the shared `FileDbRepository::revokeWhere()`,
+  so revoking either end of a grant revokes both.
+- `lcobucci/jwt`, `php-http/discovery`, `psr/http-factory` and `psr/http-message` are now direct
+  requirements. They were already installed transitively; this package calls them itself.
 
 ### Security
 
 - Identifier lookups never delegate to `FileDB`'s search, which matches case-insensitively and
   treats `*` as a wildcard — a `client_id` of `claude*` would otherwise resolve a stored
   `claude-desktop`.
+- PKCE with `S256` is required of every client, confidential ones included, and the check runs
+  before league sees the request. league registers a `PlainVerifier` alongside the `S256Verifier`
+  and defaults an absent `code_challenge_method` to `plain`; a `plain` challenge was accepted in
+  the spike.
+- A `resource` parameter naming another server is refused with `invalid_target` rather than
+  answered with a token for this one.
+- Consent approvals are bound to the user, client, redirect URI, scopes, code challenge and state
+  they were shown for, so a cross-site POST cannot approve an authorization request.
+- Revocation answers 200 for a token belonging to another client instead of refusing, so the
+  endpoint cannot be used to ask whether a token exists.
+- No endpoint lets an internal exception message reach a client: anything that is not an
+  `OAuthServerException` becomes a fixed `server_error`.
 
 [Unreleased]: https://github.com/voltcms/mcp/commits/main

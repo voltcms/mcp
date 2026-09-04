@@ -135,6 +135,43 @@ abstract class FileDbRepository
     }
 
     /**
+     * Flag every record whose $field holds $value. Used to end a grant in one step: revoking a
+     * refresh token should take the access token issued alongside it with it, and vice versa.
+     *
+     * The comparison is `hash_equals()` for the same reason `find()`'s is — the value is usually a
+     * token identifier that arrived in a request. See the class docblock and PLAN.md §4.8.
+     *
+     * @return int Number of records newly flagged.
+     */
+    protected function revokeWhere(string $field, string $value): int
+    {
+        if ($value === '') {
+            return 0;
+        }
+
+        return (int) Lock::exclusive(function () use ($field, $value): int {
+            $revoked = 0;
+
+            foreach ($this->db->readAll() as $record) {
+                $candidate = $record[$field] ?? null;
+
+                if (!is_string($candidate) || !hash_equals($candidate, $value)) {
+                    continue;
+                }
+
+                if (($record[self::FIELD_REVOKED] ?? false) === true) {
+                    continue;
+                }
+
+                $this->db->update((string) $record[FileDB::ATTRIBUTE_ID], [self::FIELD_REVOKED => true]);
+                $revoked++;
+            }
+
+            return $revoked;
+        });
+    }
+
+    /**
      * Delete every record that expired before $now. Nothing calls this on a schedule: a
      * flat-file deployment has no daemon, so sweeping is the consuming application's decision
      * (a cron entry, or a probability on write). Left uncalled, the collection grows without
